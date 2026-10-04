@@ -162,6 +162,3 @@ npm run dev
 # Ensure compulsory columns exist in Excel
 ```
 
-## License
-
-MIT License
