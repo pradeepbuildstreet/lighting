@@ -81,6 +81,5 @@ See `docs/excel-template.csv` for required columns.
 
 **Optional:** brand, ip_rating, voltage, beam_angle, mounting_type, smart_compatible, warranty
 
-## License
 
-MIT
+
