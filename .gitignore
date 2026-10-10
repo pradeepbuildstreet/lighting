@@ -24,7 +24,6 @@ build/
 Thumbs.db
 
 # Uploads
-frontend/public/uploads/*
 !frontend/public/uploads/.gitkeep
 
 # Logs
