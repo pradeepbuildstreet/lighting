@@ -22,15 +22,15 @@ export async function generateMetadata({ searchParams }: { searchParams: SearchP
   const canonical = getAbsoluteUrl(
     category ? getCategoryHrefFromSlugs(categoryPath.map((item) => item.slug)) : "/products"
   );
-  const title = category ? `${category.name} | Lighting House` : "All Lighting Products | Lighting House";
-  const description = category?.description?.trim() || "Browse lighting for every room from Lighting House.";
+  const title = category ? `${category.name} | Luminoza` : "All Lighting Products | Luminoza";
+  const description = category?.description?.trim() || "Browse lighting for every room from Luminoza.";
 
   return {
     title,
     description,
     alternates: { canonical },
     robots: hasExtraFilters ? { index: false, follow: true } : { index: true, follow: true },
-    openGraph: { type: "website", title, description, url: canonical, siteName: "Lighting House" },
+    openGraph: { type: "website", title, description, url: canonical, siteName: "Luminoza" },
   };
 }
 

@@ -2,7 +2,7 @@ import { CategoryManager } from "./CategoryManager";
 import { ManagerTabs } from "@/components/ManagerTabs";
 
 export const metadata = {
-  title: "Manage Categories | Lighting House",
+  title: "Manage Categories | Luminoza",
   robots: { index: false, follow: false },
 };
 

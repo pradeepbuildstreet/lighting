@@ -88,6 +88,7 @@ export function CategoryManager() {
         `${API_BASE_URL}/categories${editingId ? `/${editingId}` : ""}`,
         {
           method: editingId ? "PUT" : "POST",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...draft, parent_id: draft.parent_id || null }),
         }
@@ -109,7 +110,7 @@ export function CategoryManager() {
     if (!window.confirm(`Delete ${category.name}?`)) return;
     setMessage("");
     try {
-      const response = await fetch(`${API_BASE_URL}/categories/${category.id}`, { method: "DELETE" });
+      const response = await fetch(`${API_BASE_URL}/categories/${category.id}`, { method: "DELETE", credentials: "include" });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Unable to delete category.");
       await loadCategories();
@@ -128,6 +129,7 @@ export function CategoryManager() {
     try {
       const response = await fetch(`${API_BASE_URL}/categories/reorder`, {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ category_id: category.id, direction }),
       });

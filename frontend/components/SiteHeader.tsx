@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { ChevronDown, Heart, Lightbulb, Menu, Search, X } from "lucide-react";
+import { ChevronDown, Heart, Menu, Search, X } from "lucide-react";
 import { API_BASE_URL, getCategoryHref, type CategoryNode } from "@/lib/categories";
 import { useWishlist } from "@/components/WishlistProvider";
 
@@ -48,11 +48,10 @@ export function SiteHeader() {
     <header className="site-header">
       <div className="container">
         <div className="site-header-main">
-          <Link href="/" className="site-brand" aria-label="Lighting House home">
-            <span className="site-brand-mark"><Lightbulb size={21} strokeWidth={1.8} /></span>
-            <span className="site-brand-copy">
-              <strong>LIGHTING HOUSE</strong>
-              <small>LIGHT FOR LIVING</small>
+          <Link href="/" className="site-brand" aria-label="Luminoza home">
+            <span className="site-brand-lockup">
+              <img src="/luminoza-logo.svg" alt="Luminoza" />
+              <small>Beautiful lighting! Exuberant living!</small>
             </span>
           </Link>
 

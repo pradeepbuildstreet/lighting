@@ -4,6 +4,7 @@ const ExcelJS = require("exceljs");
 const path = require("path");
 const dotenv = require("dotenv");
 const { query, bulkInsertProducts } = require("../db/database");
+const { requireAdmin } = require("../middleware/require-admin");
 const { validateProduct } = require("../validators/product-validator");
 
 dotenv.config();
@@ -62,7 +63,7 @@ function normalizeCellValue(value) {
   return String(value).trim();
 }
 
-router.post("/import-excel", upload.single("file"), async (req, res) => {
+router.post("/import-excel", requireAdmin, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: "Excel file required (.xls or .xlsx)" });

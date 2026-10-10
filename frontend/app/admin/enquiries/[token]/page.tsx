@@ -3,7 +3,7 @@ import { EnquiryDetail } from "@/components/EnquiryDetail";
 import { ManagerTabs } from "@/components/ManagerTabs";
 
 export const metadata: Metadata = {
-  title: "Wishlist Enquiry | Lighting House",
+  title: "Wishlist Enquiry | Luminoza",
   robots: { index: false, follow: false },
 };
 

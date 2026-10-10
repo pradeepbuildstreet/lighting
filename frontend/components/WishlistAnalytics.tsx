@@ -21,7 +21,7 @@ export function WishlistAnalytics() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/wishlists/admin/analytics`, { cache: "no-store" })
+    fetch(`${API_BASE_URL}/wishlists/admin/analytics`, { cache: "no-store", credentials: "include" })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load wishlist analytics.");

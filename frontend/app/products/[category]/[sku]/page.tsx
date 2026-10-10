@@ -13,10 +13,10 @@ type Props = {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const product = await getProductBySku(params.sku);
-  if (!product) return { title: "Product Not Found | Lighting House", robots: { index: false } };
+  if (!product) return { title: "Product Not Found | Luminoza", robots: { index: false } };
 
-  const title = `${product.name} | Lighting House`;
-  const description = product.description?.trim() || `Shop ${product.name} at Lighting House.`;
+  const title = `${product.name} | Luminoza`;
+  const description = product.description?.trim() || `Shop ${product.name} at Luminoza.`;
   const canonical = getAbsoluteUrl(
     `/products/${encodeURIComponent(product.category)}/${encodeURIComponent(product.sku)}`
   );
@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description,
       url: canonical,
-      siteName: "Lighting House",
+      siteName: "Luminoza",
       images: product.image_url ? [{ url: product.image_url, alt: product.name }] : undefined,
     },
     twitter: {

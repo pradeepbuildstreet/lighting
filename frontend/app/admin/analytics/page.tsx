@@ -3,7 +3,7 @@ import { ManagerTabs } from "@/components/ManagerTabs";
 import { WishlistAnalytics } from "@/components/WishlistAnalytics";
 
 export const metadata: Metadata = {
-  title: "Wishlist Analytics | Lighting House",
+  title: "Wishlist Analytics | Luminoza",
   robots: { index: false, follow: false },
 };
 

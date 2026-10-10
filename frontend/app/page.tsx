@@ -10,16 +10,16 @@ type GalleryProduct = {
 };
 
 export const metadata = {
-  title: "Decorative Lighting Store | Premium Lighting Solutions",
+  title: "Luminoza | Beautiful lighting! Exuberant living!",
   description:
     "Discover our collection of decorative lighting including pendant lights, wall sconces, ceiling lights, and table lamps",
   alternates: { canonical: getAbsoluteUrl("/") },
   openGraph: {
     type: "website",
-    title: "Lighting House | Decorative Lighting",
+    title: "Luminoza | Beautiful lighting! Exuberant living!",
     description: "Shop lighting for every room, including decorative, false ceiling, solar, and wardrobe lights.",
     url: getAbsoluteUrl("/"),
-    siteName: "Lighting House",
+    siteName: "Luminoza",
   },
 };
 

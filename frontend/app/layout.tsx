@@ -7,8 +7,8 @@ import { WishlistProvider } from "@/components/WishlistProvider";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_ORIGIN),
-  title: "Decorative Lighting Store | Premium Lighting Solutions",
-  description: "Discover our collection of decorative lighting including pendant lights, wall sconces, ceiling lights, and table lamps",
+  title: "Luminoza | Beautiful lighting! Exuberant living!",
+  description: "Discover decorative lighting by Luminoza. Beautiful lighting! Exuberant living!",
   keywords: "decorative lighting, pendant lights, wall sconces, ceiling lights, LED lamps, modern lighting",
 };
 

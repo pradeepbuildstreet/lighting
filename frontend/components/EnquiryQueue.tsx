@@ -11,6 +11,7 @@ type EnquirySummary = {
   email?: string | null;
   pin_code: string;
   status: string;
+  communication_channel?: string | null;
   item_count: number;
   submitted_at: string;
 };
@@ -21,7 +22,7 @@ export function EnquiryQueue() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/wishlists/admin`, { cache: "no-store" })
+    fetch(`${API_BASE_URL}/wishlists/admin`, { cache: "no-store", credentials: "include" })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Could not load enquiries.");
@@ -39,7 +40,7 @@ export function EnquiryQueue() {
     <div className="enquiry-table-wrap">
       <table className="enquiry-table">
         <thead>
-          <tr><th>Customer</th><th>Mobile</th><th>PIN code</th><th>Products</th><th>Status</th><th>Received</th><th /></tr>
+          <tr><th>Customer</th><th>Mobile</th><th>Channel</th><th>Products</th><th>Status</th><th>Received</th><th /></tr>
         </thead>
         <tbody>
           {enquiries.map((enquiry) => (
@@ -49,7 +50,7 @@ export function EnquiryQueue() {
                 {enquiry.email && <small>{enquiry.email}</small>}
               </td>
               <td data-label="Mobile">{enquiry.mobile_number}</td>
-              <td data-label="PIN code">{enquiry.pin_code}</td>
+              <td data-label="Channel"><span className="enquiry-status">{enquiry.communication_channel === "whatsapp" ? "WhatsApp opened" : "Website"}</span></td>
               <td data-label="Products">{enquiry.item_count}</td>
               <td data-label="Status"><span className={`enquiry-status is-${enquiry.status}`}>{enquiry.status}</span></td>
               <td data-label="Received">{new Date(enquiry.submitted_at).toLocaleDateString("en-IN")}</td>

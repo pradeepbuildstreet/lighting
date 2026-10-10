@@ -2,10 +2,12 @@ const express = require("express");
 const multer = require("multer");
 const path = require("path");
 const dotenv = require("dotenv");
+const { requireAdmin } = require("../middleware/require-admin");
 
 dotenv.config();
 
 const router = express.Router();
+router.use(requireAdmin);
 
 const upload = multer({
   storage: multer.diskStorage({

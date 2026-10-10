@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const express = require("express");
 const { query } = require("../db/database");
+const { requireAdmin } = require("../middleware/require-admin");
 
 const router = express.Router();
 const SESSION_HEADER = "x-wishlist-session";
@@ -186,11 +187,31 @@ router.post("/session/submit", async (req, res) => {
   }
 });
 
-router.get("/admin", async (_req, res) => {
+router.post("/session/whatsapp-opened", async (req, res) => {
+  const sessionHash = getSessionHash(req, res);
+  if (!sessionHash) return;
+
   try {
     const result = await query(
-      `SELECT w.id, w.share_token, w.customer_name, w.mobile_number, w.email,
-              w.pin_code, w.status, w.updated_at, w.submitted_at,
+      `UPDATE wishlists
+       SET communication_channel = 'whatsapp', whatsapp_opened_at = NOW(), updated_at = NOW()
+       WHERE session_hash = $1 AND status <> 'draft'
+       RETURNING share_token, communication_channel, whatsapp_opened_at`,
+      [sessionHash]
+    );
+    if (!result.rows.length) return res.status(404).json({ error: "Submitted enquiry not found." });
+    res.json({ enquiry: result.rows[0] });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.get("/admin", requireAdmin, async (_req, res) => {
+  try {
+    const result = await query(
+            `SELECT w.id, w.share_token, w.customer_name, w.mobile_number, w.email,
+              w.pin_code, w.status, w.communication_channel, w.whatsapp_opened_at,
+              w.updated_at, w.submitted_at,
               COUNT(i.id)::integer AS item_count
        FROM wishlists w
        LEFT JOIN wishlist_items i ON i.wishlist_id = w.id
@@ -204,7 +225,7 @@ router.get("/admin", async (_req, res) => {
   }
 });
 
-router.get("/admin/analytics", async (_req, res) => {
+router.get("/admin/analytics", requireAdmin, async (_req, res) => {
   try {
     const result = await query(
       `SELECT p.sku, p.name, p.price, p.image_url, c.slug AS category_slug,
@@ -226,11 +247,12 @@ router.get("/admin/analytics", async (_req, res) => {
   }
 });
 
-router.get("/admin/:token", async (req, res) => {
+router.get("/admin/:token", requireAdmin, async (req, res) => {
   try {
     const result = await query(
-      `SELECT id, share_token, status, customer_name, mobile_number, email,
-              pin_code, requirements, created_at, updated_at, submitted_at
+            `SELECT id, share_token, status, customer_name, mobile_number, email,
+              pin_code, requirements, communication_channel, whatsapp_opened_at,
+              created_at, updated_at, submitted_at
        FROM wishlists WHERE share_token = $1 AND status <> 'draft'`,
       [req.params.token]
     );
@@ -241,7 +263,7 @@ router.get("/admin/:token", async (req, res) => {
   }
 });
 
-router.patch("/admin/:token/status", async (req, res) => {
+router.patch("/admin/:token/status", requireAdmin, async (req, res) => {
   const status = String(req.body.status || "");
   if (!["contacted", "closed"].includes(status)) {
     return res.status(400).json({ error: "Status must be contacted or closed." });

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { Grid2X2, Heart, List, Share2, Trash2 } from "lucide-react";
 import { useWishlist } from "@/components/WishlistProvider";
-import { getAbsoluteUrl } from "@/lib/categories";
+import { API_BASE_URL, getAbsoluteUrl } from "@/lib/categories";
 import { getImageSrc } from "@/lib/image-url";
 
 const MANAGER_EMAIL = "pradeep33.tcs@gmail.com";
@@ -15,7 +15,7 @@ function getEnquiryUrl(token: string) {
 }
 
 export function WishlistClient() {
-  const { wishlist, loading, removeProduct, submitEnquiry } = useWishlist();
+  const { wishlist, sessionId, loading, removeProduct, submitEnquiry } = useWishlist();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [customer, setCustomer] = useState({ name: "", mobile_number: "", email: "", pin_code: "", requirements: "" });
   const [busy, setBusy] = useState(false);
@@ -25,7 +25,7 @@ export function WishlistClient() {
   const enquiryUrl = wishlist ? getEnquiryUrl(wishlist.share_token) : "";
   const messageText = wishlist
     ? [
-        "Lighting House wishlist enquiry",
+        "Luminoza wishlist enquiry",
         `Customer: ${wishlist.customer_name}`,
         `Mobile: ${wishlist.mobile_number}`,
         `PIN code: ${wishlist.pin_code}`,
@@ -35,7 +35,7 @@ export function WishlistClient() {
       ].filter(Boolean).join("\n")
     : "";
   const whatsappUrl = `https://wa.me/${MANAGER_WHATSAPP}?text=${encodeURIComponent(messageText)}`;
-  const emailUrl = `mailto:${MANAGER_EMAIL}?subject=${encodeURIComponent("Lighting House wishlist enquiry")}&body=${encodeURIComponent(messageText)}`;
+  const emailUrl = `mailto:${MANAGER_EMAIL}?subject=${encodeURIComponent("Luminoza wishlist enquiry")}&body=${encodeURIComponent(messageText)}`;
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -62,13 +62,35 @@ export function WishlistClient() {
     }
   };
 
+  const openWhatsApp = async (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    const whatsappTab = window.open("about:blank", "_blank");
+    if (!whatsappTab) {
+      setError("Allow pop-ups to continue to WhatsApp.");
+      return;
+    }
+    whatsappTab.opener = null;
+    try {
+      if (sessionId) {
+        await fetch(`${API_BASE_URL}/wishlists/session/whatsapp-opened`, {
+          method: "POST",
+          headers: { "x-wishlist-session": sessionId },
+        });
+      }
+    } catch {
+      setMessage("Opening WhatsApp. The enquiry channel could not be recorded just now.");
+    } finally {
+      whatsappTab.location.href = whatsappUrl;
+    }
+  };
+
   if (loading) return <div className="container py-12">Loading wishlist...</div>;
 
   return (
     <div className="container py-10 wishlist-page">
       <div className="wishlist-page-heading">
         <div>
-          <p className="wishlist-eyebrow">Lighting House</p>
+          <p className="wishlist-eyebrow">Luminoza</p>
           <h1>My Wishlist</h1>
           <p>{itemCount} {itemCount === 1 ? "product" : "products"}</p>
         </div>
@@ -164,7 +186,7 @@ export function WishlistClient() {
               <div className="wishlist-share-actions">
                 <p>Your enquiry is saved. Adding another product starts a new wishlist and leaves this enquiry unchanged.</p>
                 <p>{wishlist.customer_name} · +91 {wishlist.mobile_number?.replace(/^\+91/, "")} · PIN {wishlist.pin_code}</p>
-                <a href={whatsappUrl} target="_blank" rel="noreferrer" className="wishlist-whatsapp-link">
+                <a href={whatsappUrl} target="_blank" rel="noreferrer" onClick={(event) => void openWhatsApp(event)} className="wishlist-whatsapp-link">
                   <Share2 size={17} aria-hidden="true" /> Share via WhatsApp
                 </a>
                 <a href={emailUrl} className="wishlist-email-link">Prepare email to {MANAGER_EMAIL}</a>

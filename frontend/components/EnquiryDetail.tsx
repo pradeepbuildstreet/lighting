@@ -5,14 +5,20 @@ import { useEffect, useState } from "react";
 import { API_BASE_URL } from "@/lib/categories";
 import { getImageSrc } from "@/lib/image-url";
 import type { Wishlist } from "@/components/WishlistProvider";
+import { OfferManager } from "@/components/OfferManager";
+
+type Enquiry = Wishlist & {
+  communication_channel?: string | null;
+  whatsapp_opened_at?: string | null;
+};
 
 export function EnquiryDetail({ token }: { token: string }) {
-  const [enquiry, setEnquiry] = useState<Wishlist | null>(null);
+  const [enquiry, setEnquiry] = useState<Enquiry | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch(`${API_BASE_URL}/wishlists/admin/${encodeURIComponent(token)}`, { cache: "no-store" })
+    fetch(`${API_BASE_URL}/wishlists/admin/${encodeURIComponent(token)}`, { cache: "no-store", credentials: "include" })
       .then(async (response) => {
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || "Enquiry not found.");
@@ -27,6 +33,7 @@ export function EnquiryDetail({ token }: { token: string }) {
     try {
       const response = await fetch(`${API_BASE_URL}/wishlists/admin/${encodeURIComponent(token)}/status`, {
         method: "PATCH",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
       });
@@ -63,6 +70,7 @@ export function EnquiryDetail({ token }: { token: string }) {
         <div><span>Mobile</span><a href={`tel:${enquiry.mobile_number}`}>{enquiry.mobile_number}</a></div>
         <div><span>Email</span>{enquiry.email ? <a href={`mailto:${enquiry.email}`}>{enquiry.email}</a> : <strong>Not provided</strong>}</div>
         <div><span>PIN code</span><strong>{enquiry.pin_code}</strong></div>
+        <div><span>Contact channel</span><strong>{enquiry.communication_channel === "whatsapp" ? "WhatsApp opened" : "Website enquiry"}</strong></div>
       </div>
 
       <section className="enquiry-requirements">
@@ -86,6 +94,7 @@ export function EnquiryDetail({ token }: { token: string }) {
           </article>
         ))}
       </section>
+      <OfferManager enquiry={enquiry} />
     </section>
   );
 }

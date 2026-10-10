@@ -1,5 +1,6 @@
 const express = require("express");
 const { pool, query } = require("../db/database");
+const { requireAdmin } = require("../middleware/require-admin");
 
 const router = express.Router();
 
@@ -71,7 +72,7 @@ router.get("/", async (_req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+router.post("/", requireAdmin, async (req, res) => {
   const { name, slug, parent_id = null, description = "", sort_order = 0 } = req.body;
   const validationError = validateCategory({ name, slug, sort_order });
   if (validationError) return res.status(400).json({ error: validationError });
@@ -97,7 +98,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-router.put("/:id", async (req, res) => {
+router.put("/:id", requireAdmin, async (req, res) => {
   const { name, slug, parent_id, description = "", sort_order = 0 } = req.body;
   const validationError = validateCategory({ name, slug, sort_order });
   if (validationError) return res.status(400).json({ error: validationError });
@@ -168,7 +169,7 @@ router.put("/:id", async (req, res) => {
   }
 });
 
-router.patch("/reorder", async (req, res) => {
+router.patch("/reorder", requireAdmin, async (req, res) => {
   const { category_id, direction } = req.body;
   if (!category_id || !["up", "down"].includes(direction)) {
     return res.status(400).json({ error: "Category and reorder direction are required." });
@@ -222,7 +223,7 @@ router.patch("/reorder", async (req, res) => {
   }
 });
 
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAdmin, async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

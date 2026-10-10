@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { WishlistClient } from "./WishlistClient";
 
 export const metadata: Metadata = {
-  title: "My Wishlist | Lighting House",
+  title: "My Wishlist | Luminoza",
   robots: { index: false, follow: false },
 };
 
