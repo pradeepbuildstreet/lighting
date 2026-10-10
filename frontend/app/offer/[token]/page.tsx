@@ -60,7 +60,7 @@ export default async function CustomerOfferPage({ params }: { params: { token: s
   }
 
   const isExpired = Boolean(offer.expires_at && new Date(offer.expires_at).getTime() < Date.now());
-  const pdfUrl = `${API_BASE_URL}/offers/${encodeURIComponent(params.token)}/pdf`;
+  const pdfUrl = `/api/offers/${encodeURIComponent(params.token)}/pdf`;
   const terms = [
     ["GST / tax", offer.terms?.gst],
     ["Payment terms", offer.terms?.payment_terms],
