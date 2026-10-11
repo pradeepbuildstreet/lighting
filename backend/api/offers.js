@@ -81,74 +81,294 @@ function formatMoney(value) {
 }
 
 function getAllowedImageOrigins() {
-  return [process.env.IMAGE_REPO_URL, ...(process.env.FRONTEND_ORIGIN || "").split(",")]
-    .filter(Boolean)
-    .flatMap((value) => {
-      try {
-        return [new URL(value).origin];
-      } catch {
-        return [];
+  const values = [
+    process.env.IMAGE_REPO_URL,
+    ...(process.env.FRONTEND_ORIGIN || "").split(","),
+  ];
+
+  const origins = new Set();
+
+  for (const rawValue of values) {
+    const value = (rawValue || "").trim();
+    if (!value) continue;
+
+    try {
+      const url = new URL(value);
+
+      if (url.protocol === "http:" || url.protocol === "https:") {
+        origins.add(url.origin);
       }
-    });
+    } catch {
+      console.warn("[offer-pdf] Invalid image origin configuration:", value);
+    }
+  }
+
+  return [...origins];
 }
 
 async function loadProductImage(imageUrl, document) {
-  if (!imageUrl) return null;
-  let source;
-  try {
-    source = new URL(imageUrl, process.env.IMAGE_REPO_URL || "http://localhost");
-  } catch {
+  const MAX_IMAGE_BYTES = 4_000_000;
+  const DOWNLOAD_TIMEOUT_MS = 10_000;
+
+  const logFailure = (reason, details = {}) => {
+    console.warn("[offer-pdf] Image skipped:", {
+      reason,
+      ...details,
+    });
+  };
+
+  if (typeof imageUrl !== "string" || !imageUrl.trim()) {
     return null;
   }
 
-  let imageBuffer;
-  const publicRoot = path.resolve(__dirname, "../../frontend/public");
-  const publicPath = decodeURIComponent(source.pathname).replace(/^\/+/, "");
-  const localCandidates = [path.resolve(publicRoot, publicPath)];
-  if (source.origin !== "http://localhost") {
-    localCandidates.push(path.resolve(publicRoot, "uploads", path.basename(publicPath)));
-  }
-  if (publicPath.startsWith("uploads/") || source.origin === "http://localhost") {
-    try {
-      for (const localPath of localCandidates) {
-        if (!localPath.startsWith(`${publicRoot}${path.sep}`)) continue;
-        try {
-          const details = await fs.stat(localPath);
-          if (details.size > 4_000_000) continue;
-          imageBuffer = await fs.readFile(localPath);
-          break;
-        } catch {
-          continue;
-        }
-      }
-    } catch {
+  let source;
+  let publicPath;
+  let imageRepoBase;
+
+  try {
+    const configuredBase = (process.env.IMAGE_REPO_URL || "").trim();
+
+    if (!configuredBase) {
+      logFailure("IMAGE_REPO_URL is missing");
       return null;
     }
-    if (!imageBuffer && source.origin === "http://localhost") return null;
+
+    imageRepoBase = new URL(configuredBase);
+
+    if (!["http:", "https:"].includes(imageRepoBase.protocol)) {
+      logFailure("IMAGE_REPO_URL must use HTTP or HTTPS");
+      return null;
+    }
+
+    source = new URL(imageUrl.trim(), imageRepoBase);
+
+    const rebaseLocalUploads =
+      process.env.IMAGE_REBASE_LOCAL_UPLOADS === "true";
+
+    const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(
+      source.hostname
+    );
+
+    const isConfiguredOrigin = source.origin === imageRepoBase.origin;
+
+    // Normalize our repository URLs and explicitly opted-in legacy local URLs.
+    // Leave unrelated external URLs unchanged.
+    if (isConfiguredOrigin || (rebaseLocalUploads && isLoopback)) {
+      source.pathname = source.pathname.replace(
+        /^\/(?:uploads\/){2,}/,
+        "/uploads/"
+      );
+
+      if (
+        rebaseLocalUploads &&
+        isLoopback &&
+        source.origin !== imageRepoBase.origin &&
+        source.pathname.startsWith("/uploads/")
+      ) {
+        source = new URL(
+          `${source.pathname}${source.search}`,
+          imageRepoBase
+        );
+      }
+}
+
+    if (!["http:", "https:"].includes(source.protocol)) {
+      logFailure("Unsupported URL protocol", {
+        protocol: source.protocol,
+      });
+      return null;
+    }
+
+    if (source.username || source.password) {
+      logFailure("Image URL must not contain credentials");
+      return null;
+    }
+
+    publicPath = decodeURIComponent(source.pathname).replace(/^\/+/, "");
+
+    if (!publicPath || publicPath.includes("\0")) {
+      logFailure("Invalid image pathname");
+      return null;
+    }
+  } catch (error) {
+    logFailure("Invalid image URL or pathname", {
+      message: error.message,
+    });
+    return null;
   }
 
-  if (!imageBuffer && source.origin !== "http://localhost") {
-    if (!getAllowedImageOrigins().includes(source.origin)) return null;
-    if (source.protocol !== "https:" && source.hostname !== "localhost") return null;
-    try {
-      const response = await fetch(source, {
-        redirect: "error",
-        signal: AbortSignal.timeout(4000),
-      });
-      const contentType = response.headers.get("content-type") || "";
-      const contentLength = Number(response.headers.get("content-length") || 0);
-      if (!response.ok || !contentType.startsWith("image/") || contentLength > 4_000_000) return null;
-      imageBuffer = Buffer.from(await response.arrayBuffer());
-      if (imageBuffer.length > 4_000_000) return null;
-    } catch {
-      return null;
+  // Log origin/path, not query parameters that may contain signed tokens.
+  const imageDetails = {
+    origin: source.origin,
+    pathname: source.pathname,
+  };
+
+  if (!getAllowedImageOrigins().includes(source.origin)) {
+    logFailure("Image origin is not allowed", imageDetails);
+    return null;
+  }
+
+  const publicRoot = process.env.IMAGE_PUBLIC_ROOT
+    ? path.resolve(process.env.IMAGE_PUBLIC_ROOT)
+    : path.resolve(__dirname, "../../frontend/public");
+
+  const localCandidates = [path.resolve(publicRoot, publicPath)];
+
+  if (publicPath.startsWith("uploads/")) {
+    localCandidates.push(
+      path.resolve(publicRoot, "uploads", path.basename(publicPath))
+    );
+  }
+
+  for (const localPath of new Set(localCandidates)) {
+    const relativePath = path.relative(publicRoot, localPath);
+
+    if (
+      !relativePath ||
+      relativePath === ".." ||
+      relativePath.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativePath)
+    ) {
+      continue;
     }
+
+    try {
+      // Resolve symlinks and ensure the target stays inside publicRoot.
+      const realRoot = await fs.realpath(publicRoot);
+      const realPath = await fs.realpath(localPath);
+      const realRelative = path.relative(realRoot, realPath);
+
+      if (
+        !realRelative ||
+        realRelative === ".." ||
+        realRelative.startsWith(`..${path.sep}`) ||
+        path.isAbsolute(realRelative)
+      ) {
+        continue;
+      }
+
+      const details = await fs.stat(realPath);
+
+      if (!details.isFile() || details.size > MAX_IMAGE_BYTES) {
+        continue;
+      }
+
+      const buffer = await fs.readFile(realPath);
+
+      if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) {
+        continue;
+      }
+
+      document.openImage(buffer);
+      return buffer;
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        logFailure("Local image read or decode failed", {
+          localPath,
+          message: error.message,
+        });
+      }
+    }
+  }
+
+  const isLoopback = ["localhost", "127.0.0.1", "[::1]"].includes(
+    source.hostname
+  );
+
+  if (source.protocol !== "https:" && !isLoopback) {
+    logFailure("Remote image requires HTTPS", imageDetails);
+    return null;
   }
 
   try {
-    document.openImage(imageBuffer);
+    const response = await fetch(source, {
+      redirect: "error",
+      signal: AbortSignal.timeout(DOWNLOAD_TIMEOUT_MS),
+      headers: {
+        Accept: "image/png, image/jpeg",
+      },
+    });
+
+    const contentType = (
+      response.headers.get("content-type") || ""
+    ).toLowerCase();
+
+    const contentLength = Number(
+      response.headers.get("content-length") || 0
+    );
+
+    if (
+      !response.ok ||
+      !contentType.startsWith("image/") ||
+      contentLength > MAX_IMAGE_BYTES ||
+      !response.body
+    ) {
+      if (response.body) {
+        await response.body.cancel();
+      }
+
+      logFailure("Image HTTP response rejected", {
+        ...imageDetails,
+        status: response.status,
+        contentType,
+        contentLength,
+      });
+
+      return null;
+    }
+
+    const reader = response.body.getReader();
+    const chunks = [];
+    let totalBytes = 0;
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        totalBytes += value.byteLength;
+
+        if (totalBytes > MAX_IMAGE_BYTES) {
+          await reader.cancel();
+
+          logFailure("Image exceeds 4 MB", imageDetails);
+          return null;
+        }
+
+        chunks.push(Buffer.from(value));
+      }
+    } finally {
+      reader.releaseLock();
+    }
+
+    if (!totalBytes) {
+      logFailure("Image response is empty", imageDetails);
+      return null;
+    }
+
+    const imageBuffer = Buffer.concat(chunks, totalBytes);
+
+    try {
+      document.openImage(imageBuffer);
+    } catch (error) {
+      logFailure("PDFKit could not decode image; use JPEG or PNG", {
+        ...imageDetails,
+        contentType,
+        message: error.message,
+      });
+
+      return null;
+    }
+
     return imageBuffer;
-  } catch {
+  } catch (error) {
+    logFailure("Remote image download failed", {
+      ...imageDetails,
+      message: error.message,
+      cause: error.cause?.message,
+      code: error.cause?.code || error.code,
+    });
+
     return null;
   }
 }
