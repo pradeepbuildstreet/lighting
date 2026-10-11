@@ -149,28 +149,48 @@ async function loadProductImage(imageUrl, document) {
       source.hostname
     );
 
+    const legacyOrigins = new Set();
+
+    for (const rawValue of (
+      process.env.IMAGE_LEGACY_ORIGINS || ""
+    ).split(",")) {
+      const value = rawValue.trim();
+      if (!value) continue;
+
+      const legacyUrl = new URL(value);
+
+      if (!["http:", "https:"].includes(legacyUrl.protocol)) {
+        throw new Error("IMAGE_LEGACY_ORIGINS must use HTTP or HTTPS");
+      }
+
+      legacyOrigins.add(legacyUrl.origin);
+    }
+
     const isConfiguredOrigin = source.origin === imageRepoBase.origin;
 
-    // Normalize our repository URLs and explicitly opted-in legacy local URLs.
-    // Leave unrelated external URLs unchanged.
-    if (isConfiguredOrigin || (rebaseLocalUploads && isLoopback)) {
+    const shouldRebase =
+      legacyOrigins.has(source.origin) ||
+      (rebaseLocalUploads && isLoopback);
+
+    if (isConfiguredOrigin || shouldRebase) {
       source.pathname = source.pathname.replace(
         /^\/(?:uploads\/){2,}/,
         "/uploads/"
       );
 
       if (
-        rebaseLocalUploads &&
-        isLoopback &&
+        shouldRebase &&
         source.origin !== imageRepoBase.origin &&
-        source.pathname.startsWith("/uploads/")
+        source.pathname.startsWith("/uploads/") &&
+        !source.username &&
+        !source.password
       ) {
         source = new URL(
           `${source.pathname}${source.search}`,
           imageRepoBase
         );
       }
-}
+    }
 
     if (!["http:", "https:"].includes(source.protocol)) {
       logFailure("Unsupported URL protocol", {
@@ -197,7 +217,9 @@ async function loadProductImage(imageUrl, document) {
     return null;
   }
 
-  // Log origin/path, not query parameters that may contain signed tokens.
+  // Continue with your existing code beginning:
+  // "Log origin/path, not query parameters that may contain signed tokens."
+
   const imageDetails = {
     origin: source.origin,
     pathname: source.pathname,
