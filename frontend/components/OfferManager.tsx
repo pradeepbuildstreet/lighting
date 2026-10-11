@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE_URL, getAbsoluteUrl } from "@/lib/categories";
+import { API_BASE_URL } from "@/lib/categories";
 
 type OfferProduct = {
   sku: string;
@@ -56,6 +56,11 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [siteOrigin, setSiteOrigin] = useState("");
+
+  useEffect(() => {
+    setSiteOrigin(window.location.origin);
+  }, []);
 
   const loadOffers = useCallback(async () => {
     const response = await fetch(`${API_BASE_URL}/offers/enquiry/${encodeURIComponent(enquiry.share_token)}`, {
@@ -137,11 +142,24 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
   }
 
   function offerLinks(offer: OfferSummary) {
-    const offerUrl = getAbsoluteUrl(`/offer/${encodeURIComponent(offer.offer_token)}`);
-    const pdfUrl = `${API_BASE_URL}/offers/${encodeURIComponent(offer.offer_token)}/pdf`;
+    const token = encodeURIComponent(offer.offer_token);
+
+    // Relative path for navigation within the current website.
+    const offerUrl = `/offer/${token}`;
+
+    // Absolute URL for sharing outside the website (uses the current browser origin).
+    const shareUrl = siteOrigin ? new URL(offerUrl, siteOrigin).href : "";
+
+    const pdfUrl = `${API_BASE_URL}/offers/${token}/pdf`;
+
     const digits = String(enquiry.mobile_number || "").replace(/\D/g, "");
-    const text = `Hello ${enquiry.customer_name || ""}, your Luminoza price offer is ready. View offer: ${offerUrl}`;
-    const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(text)}`;
+    const text =
+      `Hello ${enquiry.customer_name || ""}, ` +
+      `your Luminoza price offer is ready. View offer: ${shareUrl}`;
+    const whatsappUrl = shareUrl
+      ? `https://wa.me/${digits}?text=${encodeURIComponent(text)}`
+      : undefined;
+
     return { offerUrl, pdfUrl, whatsappUrl };
   }
 
@@ -223,9 +241,11 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
                 <div><strong>Version {offer.version}</strong><small>Created {new Date(offer.created_at).toLocaleString("en-IN")}{offer.expires_at ? ` · Valid until ${new Date(offer.expires_at).toLocaleDateString("en-IN")}` : ""}</small></div>
                 <span className="enquiry-status">Ready to share</span>
                 <div className="offer-history-actions">
-                  <a href={links.offerUrl} target="_blank" rel="noreferrer">View link</a>
+                  <a href={links.offerUrl} target="_blank" rel="noopener noreferrer">View link</a>
                   <a href={links.pdfUrl}>Download PDF</a>
-                  <a href={links.whatsappUrl} target="_blank" rel="noreferrer">Open WhatsApp</a>
+                  {links.whatsappUrl && (
+                    <a href={links.whatsappUrl} target="_blank" rel="noopener noreferrer">Open WhatsApp</a>
+                  )}
                 </div>
               </article>
             );
