@@ -96,7 +96,7 @@ async function loadProductImage(imageUrl, document) {
   if (!imageUrl) return null;
   let source;
   try {
-    source = new URL(imageUrl, "http://localhost");
+    source = new URL(imageUrl, process.env.IMAGE_REPO_URL || "http://localhost");
   } catch {
     return null;
   }
