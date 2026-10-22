@@ -1,6 +1,6 @@
 # Supported consolidated application setup
 
-Use CATALOG_DATABASE_URL as the ONLY database connection setting with this release. No DATABASE_URL fallback. One shared pool per backend process covers auth, catalogue, wishlist/enquiry and offers. Keep real admin accounts, UUIDs, password hashes, AUTH_SECRET and bridge token unchanged.
+Use DATABASE_URL as the ONLY database connection setting with this release. No DATABASE_URL fallback. One shared pool per backend process covers auth, catalogue, wishlist/enquiry and offers. Keep real admin accounts, UUIDs, password hashes, AUTH_SECRET and bridge token unchanged.
 
 This is an upgrade over the supplied Phase-1-applied source, not a new-database initializer. Never apply historical recreation SQL or create-admin just to upgrade. The installer does not mutate database, media or environment files.
 
