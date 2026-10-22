@@ -1,4 +1,4 @@
-"use client";
+"use client"; 
 import {useState} from 'react';
 type PreviewRow={sheet:string;row_number:number;record_key:string|null;action:string;errors:string[];staged_data:{payload?:{name?:string};expected_revision?:number|string|null}};
 type Preview={job:{id:string;status:string;preview_revision:string;expires_at:string};rows:PreviewRow[];commit_ready:boolean};
