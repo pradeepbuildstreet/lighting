@@ -8,9 +8,9 @@ function loadConfig(env = process.env) {
     return value;
   }
   const databaseUrl = env.CATALOG_DATABASE_URL;
-  if (!databaseUrl) throw new Error('CATALOG_DATABASE_URL is required');
+  if (!databaseUrl) throw new Error('DATABASE_URL is required');
   const db = new URL(databaseUrl);
-  if (!['postgres:', 'postgresql:'].includes(db.protocol)) throw new Error('CATALOG_DATABASE_URL must be PostgreSQL');
+  if (!['postgres:', 'postgresql:'].includes(db.protocol)) throw new Error('DATABASE_URL must be PostgreSQL');
   const siteUrl = env.SITE_URL || env.FRONTEND_ORIGIN?.split(',')[0]?.trim() || (production ? '' : 'http://localhost:3001');
   if (!siteUrl) throw new Error('SITE_URL is required in production');
   const site = new URL(siteUrl);
