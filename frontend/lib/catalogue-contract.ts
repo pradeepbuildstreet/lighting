@@ -1,0 +1,9 @@
+export type CatalogueScalar=string|number|boolean;
+export type CatalogueMedia={id:string;type:'image'|'video';url:string;primary:boolean;alt:string|null;caption:string|null;order:number;poster_id:string|null};
+export type CatalogueCategory={id:string;parent_id:string|null;slug:string;name:string;path:string;description:string|null;sort_order:number;product_count:number;children:CatalogueCategory[]};
+export type CatalogueProduct={source:'catalogue';id:string;sku:string;name:string;kind:'fixture'|'light';revision:string;brand:string|null;model:string|null;description:string|null;price:string;currency:string;media:CatalogueMedia[];categories:{id:string;slug:string;name:string;path:string;primary:boolean}[];specifications:Record<string,CatalogueScalar|Record<string,CatalogueScalar>>;seo:{slug:string|null;title:string|null;description:string|null}};
+export type CataloguePagination={page:number;limit:number;total:number;pages:number};
+export type CatalogueList={source:'catalogue';products:CatalogueProduct[];pagination:CataloguePagination};
+export type CatalogueVerdict={status:'compatible'|'incompatible'|'unverified'|'exception_approved'|'exception_rejected';technical_status:'compatible'|'incompatible'|'unverified';reasons:string[];missing:string[];scope:'configured_rules_only';exception:{decision:'approve'|'reject';revision_bound:false;warning:string}|null};
+export type CatalogueCompatibility={source:'catalogue';fixture_id:string;mode:'replaceable'|'integrated'|'hybrid';groups:{id:string;code:string;socket_count:number}[];candidates:{product:CatalogueProduct;groups:({group_id:string}&CatalogueVerdict)[]}[];pagination:CataloguePagination;scope:'configured_rules_only';warning?:string};
+export type CatalogueFacet={kind:'fixture'|'light';brand:string|null;currency:string;min_price:string|null;max_price:string|null;product_count:number};

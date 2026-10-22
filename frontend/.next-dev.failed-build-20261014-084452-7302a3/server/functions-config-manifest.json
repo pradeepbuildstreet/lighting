@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "functions": {
+    "/admin/catalogue": {},
+    "/sitemap.xml": {},
+    "/admin/analytics": {},
+    "/admin/enquiries/[token]": {},
+    "/admin/login": {},
+    "/admin/enquiries": {},
+    "/admin/categories": {},
+    "/categories/[...slug]": {},
+    "/admin": {},
+    "/admin/users": {},
+    "/catalogue": {},
+    "/products": {},
+    "/catalogue/products/[sku]": {},
+    "/item/[sku]": {},
+    "/products/[category]/[sku]": {},
+    "/products/[category]": {},
+    "/wishlist": {},
+    "/": {},
+    "/catalogue/product-id/[id]": {},
+    "/offer/[token]": {}
+  }
+}

@@ -12,7 +12,7 @@ npm-debug.log*
 frontend/.next-dev/
 dist/
 build/
-
+Luminoza-Clean-Production-Database-Bootstrap/
 # IDE
 .vscode/
 .idea/

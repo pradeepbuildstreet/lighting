@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ManagerTabs } from "@/components/ManagerTabs";
+import { AdminShell } from "@/components/AdminShell";
 import { AdminUsers } from "@/components/AdminUsers";
 
 export const metadata: Metadata = {
@@ -9,14 +9,13 @@ export const metadata: Metadata = {
 
 export default function AdminUsersPage() {
   return (
-    <div className="container py-8 manager-page">
-      <ManagerTabs active="admins" />
+    <AdminShell active="admins">
       <div className="manager-page-heading">
         <p className="wishlist-eyebrow">Access control</p>
         <h1>Admin accounts</h1>
         <p>Manage who can access store operations and customer enquiries.</p>
       </div>
       <AdminUsers />
-    </div>
+    </AdminShell>
   );
 }

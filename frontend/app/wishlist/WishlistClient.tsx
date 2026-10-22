@@ -1,11 +1,14 @@
 "use client";
+import { WishlistMedia } from "@/components/WishlistMedia";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Grid2X2, Heart, List, Share2, Trash2 } from "lucide-react";
 import { useWishlist } from "@/components/WishlistProvider";
-import { API_BASE_URL, getAbsoluteUrl } from "@/lib/categories";
-import { getImageSrc } from "@/lib/image-url";
+import { API_BASE_URL, getAbsoluteUrl } from "@/lib/api-base";
+import styles from "@/components/WishlistQuantity.module.css";
+import { MAX_QUANTITY, quantityInput, lineAmount } from "@/lib/wishlist-quantity.mjs";
+import { itemIdentity, wishlistProductHref } from "@/lib/wishlist-product";
 
 const MANAGER_EMAIL = "pradeep33.tcs@gmail.com";
 const MANAGER_WHATSAPP = (process.env.NEXT_PUBLIC_MANAGER_WHATSAPP_NUMBER || "918124969000").replace(/\D/g, "");
@@ -15,13 +18,42 @@ function getEnquiryUrl(token: string) {
 }
 
 export function WishlistClient() {
-  const { wishlist, sessionId, loading, removeProduct, submitEnquiry } = useWishlist();
+  const { wishlist, sessionId, loading, pendingMutations, updateQuantity, removeProduct, submitEnquiry } = useWishlist();
   const [view, setView] = useState<"grid" | "list">("grid");
   const [customer, setCustomer] = useState({ name: "", mobile_number: "", email: "", pin_code: "", requirements: "" });
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [quantityErrors, setQuantityErrors] = useState<Record<string, string>>({});
+  const editVersions = useRef<Record<string, number>>({});
+  const submitting = useRef(false);
+  const invalidQuantities = !!wishlist?.items.some(item =>
+    quantityInput(quantities[itemIdentity(item)] ?? String(item.quantity)) === null || !!quantityErrors[itemIdentity(item)]
+  );
+  function saveQuantity(productId: string, raw: string) {
+    const version = (editVersions.current[productId] || 0) + 1;
+    editVersions.current[productId] = version;
+    setQuantities(current => ({ ...current, [productId]: raw }));
+    const next = quantityInput(raw);
+    setQuantityErrors(current => ({ ...current, [productId]: next === null ? `Enter a whole number from 1 to ${MAX_QUANTITY}.` : "" }));
+    if (next === null) return;
+    void updateQuantity(productId, next).then(() => {
+      if (editVersions.current[productId] === version) setQuantityErrors(current => ({ ...current, [productId]: "" }));
+    }).catch(caught => {
+      if (editVersions.current[productId] === version) setQuantityErrors(current => ({ ...current, [productId]: caught instanceof Error ? caught.message : "Quantity could not be saved. Retry." }));
+    });
+  }
+  async function removeItem(identity: string) {
+    setError("");
+    try {
+      await removeProduct(identity);
+      setQuantities(current => { const next = { ...current }; delete next[identity]; return next; });
+      setQuantityErrors(current => { const next = { ...current }; delete next[identity]; return next; });
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Could not remove product."); }
+  }
   const itemCount = wishlist?.items.length || 0;
+  const totalUnits = wishlist?.items.reduce((sum, item) => sum + Number(item.quantity), 0) || 0;
   const enquiryUrl = wishlist ? getEnquiryUrl(wishlist.share_token) : "";
   const messageText = wishlist
     ? [
@@ -30,7 +62,7 @@ export function WishlistClient() {
         `Mobile: ${wishlist.mobile_number}`,
         `PIN code: ${wishlist.pin_code}`,
         wishlist.requirements ? `Requirements: ${wishlist.requirements}` : "",
-        `Products: ${wishlist.items.map((item) => item.name).join(", ")}`,
+        `Products: ${wishlist.items.map((item) => `${item.name} (Qty: ${item.quantity})`).join(", ")}`,
         `Enquiry link: ${enquiryUrl}`,
       ].filter(Boolean).join("\n")
     : "";
@@ -39,6 +71,9 @@ export function WishlistClient() {
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitting.current) return;
+    if (invalidQuantities) { setError("Save valid quantities for every product before submitting."); return; }
+    submitting.current = true;
     setBusy(true);
     setError("");
     setMessage("");
@@ -48,17 +83,8 @@ export function WishlistClient() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not submit enquiry.");
     } finally {
+      submitting.current = false;
       setBusy(false);
-    }
-  };
-
-  const copyLink = async () => {
-    if (!enquiryUrl) return;
-    try {
-      await navigator.clipboard.writeText(enquiryUrl);
-      setMessage("Private wishlist link copied.");
-    } catch {
-      setMessage(enquiryUrl);
     }
   };
 
@@ -92,7 +118,7 @@ export function WishlistClient() {
         <div>
           <p className="wishlist-eyebrow">Luminoza</p>
           <h1>My Wishlist</h1>
-          <p>{itemCount} {itemCount === 1 ? "product" : "products"}</p>
+          <p>{itemCount} {itemCount === 1 ? "product" : "products"} · {totalUnits} {totalUnits === 1 ? "unit" : "units"}</p>
         </div>
         {wishlist && (
           <div className="wishlist-view-toggle" role="group" aria-label="Wishlist layout">
@@ -108,6 +134,7 @@ export function WishlistClient() {
 
       {message && <p className="wishlist-feedback" role="status">{message}</p>}
       {error && <p className="wishlist-error" role="alert">{error}</p>}
+      {pendingMutations > 0 && <p role="status" aria-live="polite">Saving wishlist changes...</p>}
 
       {!wishlist?.items.length ? (
         <div className="wishlist-empty">
@@ -120,20 +147,40 @@ export function WishlistClient() {
         <>
           <div className={`wishlist-items ${view === "list" ? "is-list" : "is-grid"}`}>
             {wishlist.items.map((item) => (
-              <article key={item.sku} className="wishlist-item">
-                <Link href={item.category_slug ? `/products/${item.category_slug}/${item.sku}` : "/products"} className="wishlist-item-product">
+              <article key={itemIdentity(item)} className="wishlist-item">
+                <Link href={wishlistProductHref(item)} className="wishlist-item-product">
                   <div className="wishlist-item-image">
-                    {item.image_url ? <img src={getImageSrc(item.image_url)} alt={item.name} /> : <span>No image</span>}
+                    <WishlistMedia item={{...item, media:item.media?.filter(m=>m.type==='image')}} />
                   </div>
                   <div className="wishlist-item-copy">
                     <h2>{item.name}</h2>
                     <p>SKU: {item.sku}</p>
-                    <strong>₹{item.price}</strong>
+                    <strong>Unit price: {item.currency || "INR"} {Number(item.price).toFixed(2)}</strong>
                     <span>In your wishlist</span>
                   </div>
                 </Link>
+                <div className={styles.quantityPanel}>
+                  {wishlist.status === "draft" ? (
+                    <label>Qty
+                      <input type="text" inputMode="numeric" pattern="[1-9][0-9]{0,3}" maxLength={4}
+                        aria-label={`Quantity for ${item.name}`}
+                        aria-invalid={!!quantityErrors[itemIdentity(item)]}
+                        aria-describedby={quantityErrors[itemIdentity(item)] ? `qty-error-${itemIdentity(item)}` : undefined}
+                        disabled={busy}
+                        value={quantities[itemIdentity(item)] ?? String(item.quantity)}
+                        onChange={event => saveQuantity(item.product_id, event.target.value)} />
+                    </label>
+                  ) : <span>Qty: {item.quantity}</span>}
+                  <small>Line amount: {item.currency || "INR"} {(wishlist.status !== "draft" || quantityInput(quantities[itemIdentity(item)] ?? String(item.quantity)) !== null)
+                    ? lineAmount(item.price, Number(quantities[itemIdentity(item)] ?? item.quantity)).toFixed(2) : "—"}</small>
+                  {quantityErrors[itemIdentity(item)] && <>
+                    <small className={styles.error} id={`qty-error-${itemIdentity(item)}`} role="alert">{quantityErrors[itemIdentity(item)]}</small>
+                    {quantityInput(quantities[itemIdentity(item)] ?? String(item.quantity)) !== null &&
+                      <button type="button" disabled={busy || pendingMutations > 0} onClick={() => saveQuantity(item.product_id, quantities[itemIdentity(item)] ?? String(item.quantity))}>Retry saving quantity</button>}
+                  </>}
+                </div>
                 {wishlist.status === "draft" && (
-                  <button type="button" className="wishlist-remove" aria-label={`Remove ${item.name}`} onClick={() => void removeProduct(item.sku)}>
+                  <button type="button" className="wishlist-remove" aria-label={`Remove ${item.name}`} disabled={busy || pendingMutations > 0} onClick={() => void removeItem(itemIdentity(item))}>
                     <Trash2 size={17} aria-hidden="true" />
                   </button>
                 )}
@@ -151,11 +198,7 @@ export function WishlistClient() {
 
             {wishlist.status === "draft" ? (
               <>
-                <div className="wishlist-share-link">
-                  <label htmlFor="wishlist-share-url">Private wishlist link</label>
-                  <input id="wishlist-share-url" readOnly value={enquiryUrl} onFocus={(event) => event.currentTarget.select()} />
-                  <button type="button" onClick={() => void copyLink()}>Copy link</button>
-                </div>
+                <p>Submit your details to create an enquiry for the manager. The enquiry link requires admin sign-in.</p>
                 <form className="wishlist-enquiry-form" onSubmit={submit}>
                   <label>
                     Name
@@ -175,9 +218,9 @@ export function WishlistClient() {
                   </label>
                   <label className="wishlist-requirements-field">
                     Requirements
-                    <textarea rows={4} maxLength={5000} placeholder="Room, quantity, finish, installation, or other details" value={customer.requirements} onChange={(event) => setCustomer({ ...customer, requirements: event.target.value })} />
+                    <textarea rows={4} maxLength={5000} placeholder="Room, finish, installation, or other details (set quantities above)" value={customer.requirements} onChange={(event) => setCustomer({ ...customer, requirements: event.target.value })} />
                   </label>
-                  <button type="submit" className="wishlist-submit-button" disabled={busy}>
+                  <button type="submit" className="wishlist-submit-button" disabled={busy || pendingMutations > 0 || invalidQuantities}>
                     {busy ? "Submitting..." : "Submit enquiry"}
                   </button>
                 </form>

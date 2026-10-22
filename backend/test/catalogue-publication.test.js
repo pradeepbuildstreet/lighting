@@ -1,0 +1,31 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {blockers,corpusDigest,createPublicationService}=require('../services/catalogue-publication');
+const id='11111111-1111-1111-1111-111111111111';
+const product={id,product_kind:'light',revision:2,is_active:true,selling_price:'0.00',review_status:'approved',approved_revision:2,approved_by:id,duplicate_of_product_id:null,published:false};
+const facts={primaryCategory:true,primaryImage:true,activeSpecType:true,audit:{status:'completed',product_revision:2,corpus_digest:'digest'},review:{decision:'approve_distinct',reviewer_id:id},digest:'digest'};
+test('current approval and zero price accepted',()=>assert.deepEqual(blockers(product,facts),[]));
+test('inactive product blocked',()=>assert.ok(blockers({...product,is_active:false},facts).includes('Product must be active')));
+test('missing price blocked',()=>assert.ok(blockers({...product,selling_price:null},facts).some(x=>x.includes('selling price'))));
+test('negative price blocked',()=>assert.ok(blockers({...product,selling_price:-1},facts).some(x=>x.includes('selling price'))));
+test('old approved revision blocked',()=>assert.ok(blockers({...product,approved_revision:1},facts).some(x=>x.includes('distinct approval'))));
+test('duplicate target blocked even with approved status',()=>assert.ok(blockers({...product,duplicate_of_product_id:id},facts).some(x=>x.includes('Duplicate products'))));
+test('active primary category required',()=>assert.ok(blockers(product,{...facts,primaryCategory:false}).includes('Active primary category required')));
+test('primary image required',()=>assert.ok(blockers(product,{...facts,primaryImage:false}).includes('Primary image required')));
+test('active spec type required',()=>assert.ok(blockers(product,{...facts,activeSpecType:false}).some(x=>x.includes('active fixture'))));
+test('newer pending audit blocks older approval',()=>assert.ok(blockers(product,{...facts,audit:{...facts.audit,status:'running'}}).some(x=>x.includes('Latest completed'))));
+test('newer rejected review blocks historical approval',()=>assert.ok(blockers(product,{...facts,review:{...facts.review,decision:'reject'}}).some(x=>x.includes('Latest audit review'))));
+test('reviewer must match approval actor',()=>assert.ok(blockers(product,{...facts,review:{...facts.review,reviewer_id:'other'}}).some(x=>x.includes('Latest audit review'))));
+test('unrelated corpus change does not revoke completed subject approval',()=>assert.deepEqual(blockers(product,{...facts,digest:'changed'}),[]));
+test('completed audit must still contain recorded corpus evidence',()=>assert.ok(blockers(product,{...facts,audit:{...facts.audit,corpus_digest:null}}).includes('Completed audit evidence required')));
+test('digest changes with membership and activation',()=>{assert.notEqual(corpusDigest([product]),corpusDigest([]));assert.notEqual(corpusDigest([product]),corpusDigest([{...product,is_active:false}]));});
+test('unpublish does not require completed audit',async()=>{
+ const calls=[];const c={query:async(sql,params)=>{calls.push([sql,params]);if(sql.includes('SELECT * FROM products'))return {rows:[{...product,review_status:'draft',approved_by:null,published:true}]};if(sql.startsWith('UPDATE products'))return {rows:[{...product,published:false}]};return {rows:[]};}};
+ const service=createPublicationService({actor:async()=>{},transaction:async fn=>fn(c)});
+ const result=await service.set({id},id,2,false);assert.equal(result.product.published,false);assert.ok(!calls.some(([sql])=>sql.includes('FROM product_duplicate_audits')));assert.equal(calls.find(([sql])=>sql.startsWith('UPDATE products'))[1][1],false);
+});
+test('stale unpublish revision rejected without writes',async()=>{
+ const calls=[];const c={query:async sql=>{calls.push(sql);return {rows:sql.includes('SELECT * FROM products')?[product]:[]};}};
+ const service=createPublicationService({actor:async()=>{},transaction:async fn=>fn(c)});
+ await assert.rejects(service.set({id},id,1,false),e=>e.status===409);assert.ok(!calls.some(s=>s.startsWith('UPDATE products')));
+});

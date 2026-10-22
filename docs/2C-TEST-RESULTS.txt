@@ -1,0 +1,300 @@
+TAP version 13
+# Subtest: compatible
+ok 1 - compatible
+  ---
+  duration_ms: 1.261441
+  ...
+# Subtest: wattage fails
+ok 2 - wattage fails
+  ---
+  duration_ms: 0.166161
+  ...
+# Subtest: unknown stays unverified
+ok 3 - unknown stays unverified
+  ---
+  duration_ms: 0.180474
+  ...
+# Subtest: wrong type
+ok 4 - wrong type
+  ---
+  duration_ms: 0.141489
+  ...
+# Subtest: voltage coverage
+ok 5 - voltage coverage
+  ---
+  duration_ms: 0.143287
+  ...
+# Subtest: dimming unknown
+ok 6 - dimming unknown
+  ---
+  duration_ms: 1.426296
+  ...
+# Subtest: non dimmable fails
+ok 7 - non dimmable fails
+  ---
+  duration_ms: 0.222081
+  ...
+# Subtest: known failure wins unknown
+ok 8 - known failure wins unknown
+  ---
+  duration_ms: 0.27148
+  ...
+# Subtest: approval retains technical result
+ok 9 - approval retains technical result
+  ---
+  duration_ms: 0.224784
+  ...
+# Subtest: rejection
+ok 10 - rejection
+  ---
+  duration_ms: 0.248311
+  ...
+# Subtest: group count
+ok 11 - group count
+  ---
+  duration_ms: 0.462139
+  ...
+# Subtest: zero count invalid
+ok 12 - zero count invalid
+  ---
+  duration_ms: 0.289722
+  ...
+# Subtest: duplicate rules rejected
+ok 13 - duplicate rules rejected
+  ---
+  duration_ms: 0.449735
+  ...
+# Subtest: voltage pairing
+ok 14 - voltage pairing
+  ---
+  duration_ms: 0.236606
+  ...
+# Subtest: GTIN checksum
+ok 15 - GTIN checksum
+  ---
+  duration_ms: 0.204778
+  ...
+# Subtest: GTIN bad checksum
+ok 16 - GTIN bad checksum
+  ---
+  duration_ms: 0.36117
+  ...
+# Subtest: slug validation
+ok 17 - slug validation
+  ---
+  duration_ms: 0.194621
+  ...
+# Subtest: nullable availability
+ok 18 - nullable availability
+  ---
+  duration_ms: 0.237666
+  ...
+# Subtest: HTTP rejected
+ok 19 - HTTP rejected
+  ---
+  duration_ms: 0.337194
+  ...
+# Subtest: URL credentials rejected
+ok 20 - URL credentials rejected
+  ---
+  duration_ms: 0.239652
+  ...
+# Subtest: video primary rejected
+ok 21 - video primary rejected
+  ---
+  duration_ms: 0.252913
+  ...
+# Subtest: PNG signature
+ok 22 - PNG signature
+  ---
+  duration_ms: 0.601338
+  ...
+# Subtest: SVG rejected
+ok 23 - SVG rejected
+  ---
+  duration_ms: 0.152487
+  ...
+# Subtest: HTML rejected
+ok 24 - HTML rejected
+  ---
+  duration_ms: 0.260741
+  ...
+# Subtest: commit writes validated draft payload and persists result
+ok 25 - commit writes validated draft payload and persists result
+  ---
+  duration_ms: 3.27423
+  ...
+# Subtest: committed replay performs no product writes
+ok 26 - committed replay performs no product writes
+  ---
+  duration_ms: 0.900743
+  ...
+# Subtest: stale writer rejection propagates transaction failure
+ok 27 - stale writer rejection propagates transaction failure
+  ---
+  duration_ms: 0.75912
+  ...
+# Subtest: expired job rejected
+ok 28 - expired job rejected
+  ---
+  duration_ms: 0.265327
+  ...
+# Subtest: foreign job owner rejected
+ok 29 - foreign job owner rejected
+  ---
+  duration_ms: 0.240029
+  ...
+# Subtest: token mismatch rejected
+ok 30 - token mismatch rejected
+  ---
+  duration_ms: 0.236526
+  ...
+# Subtest: updates require explicit confirmation
+ok 31 - updates require explicit confirmation
+  ---
+  duration_ms: 0.239532
+  ...
+# Subtest: error rows block entire commit
+ok 32 - error rows block entire commit
+  ---
+  duration_ms: 0.242142
+  ...
+# Subtest: preview preserves source row and hashes workbook bytes
+ok 33 - preview preserves source row and hashes workbook bytes
+  ---
+  duration_ms: 1.63119
+  ...
+# Subtest: parse error retained in persisted preview
+ok 34 - parse error retained in persisted preview
+  ---
+  duration_ms: 0.558704
+  ...
+# Subtest: formula cell rejected
+ok 35 - formula cell rejected
+  ---
+  duration_ms: 0.264352
+  ...
+# Subtest: invalid ZIP rejected
+ok 36 - invalid ZIP rejected
+  ---
+  duration_ms: 0.289566
+  ...
+# Subtest: normalize SKU
+ok 37 - normalize SKU
+  ---
+  duration_ms: 1.509021
+  ...
+# Subtest: whitespace SKU rejected
+ok 38 - whitespace SKU rejected
+  ---
+  duration_ms: 0.423153
+  ...
+# Subtest: fixture missing bulb data stays unknown
+ok 39 - fixture missing bulb data stays unknown
+  ---
+  duration_ms: 0.195905
+  ...
+# Subtest: missing fixture type
+ok 40 - missing fixture type
+  ---
+  duration_ms: 0.147886
+  ...
+# Subtest: light numeric strings
+ok 41 - light numeric strings
+  ---
+  duration_ms: 0.204744
+  ...
+# Subtest: negative wattage
+ok 42 - negative wattage
+  ---
+  duration_ms: 0.140332
+  ...
+# Subtest: paired voltage required
+ok 43 - paired voltage required
+  ---
+  duration_ms: 0.8998
+  ...
+# Subtest: voltage range ordered
+ok 44 - voltage range ordered
+  ---
+  duration_ms: 0.262528
+  ...
+# Subtest: primary must be assigned
+ok 45 - primary must be assigned
+  ---
+  duration_ms: 0.220822
+  ...
+# Subtest: duplicate categories
+ok 46 - duplicate categories
+  ---
+  duration_ms: 0.229047
+  ...
+# Subtest: valid primary
+ok 47 - valid primary
+  ---
+  duration_ms: 0.162856
+  ...
+# Subtest: unknown dimming remains null
+ok 48 - unknown dimming remains null
+  ---
+  duration_ms: 0.13189
+  ...
+# Subtest: zero selling price accepted
+ok 49 - zero selling price accepted
+  ---
+  duration_ms: 0.120474
+  ...
+# Subtest: null price allowed for draft
+ok 50 - null price allowed for draft
+  ---
+  duration_ms: 0.163818
+  ...
+# Subtest: reject NaN
+ok 51 - reject NaN
+  ---
+  duration_ms: 0.13428
+  ...
+# Subtest: reject boolean numeric
+ok 52 - reject boolean numeric
+  ---
+  duration_ms: 0.167368
+  ...
+# Subtest: strict boolean
+ok 53 - strict boolean
+  ---
+  duration_ms: 0.152622
+  ...
+# Subtest: JSON must be object
+ok 54 - JSON must be object
+  ---
+  duration_ms: 0.221748
+  ...
+# Subtest: UUID required
+ok 55 - UUID required
+  ---
+  duration_ms: 0.138718
+  ...
+# Subtest: unsupported product kind
+ok 56 - unsupported product kind
+  ---
+  duration_ms: 0.174459
+  ...
+# Subtest: replaceable rejects integrated data
+ok 57 - replaceable rejects integrated data
+  ---
+  duration_ms: 0.147752
+  ...
+# Subtest: integrated JSON retained
+ok 58 - integrated JSON retained
+  ---
+  duration_ms: 0.143932
+  ...
+1..58
+# tests 58
+# suites 0
+# pass 58
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 207.884783

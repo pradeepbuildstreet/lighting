@@ -1,0 +1,8 @@
+.quantityPanel { display:flex; flex-wrap:wrap; align-items:center; gap:.65rem; padding:.85rem 1rem; border-top:1px solid #e2e7df; position:relative; z-index:1; background:#fff; }
+.quantityPanel label { display:flex; align-items:center; gap:.5rem; font-weight:600; }
+.quantityPanel input { width:5.25rem; min-height:2.75rem; border:1px solid #839183; border-radius:.4rem; padding:.4rem .6rem; color:#18382e; background:#fff; }
+.quantityPanel input[aria-invalid="true"] { border-color:#a52626; }
+.quantityPanel small { display:block; flex-basis:100%; }
+.quantityPanel button { border:1px solid #839183; border-radius:.4rem; padding:.4rem .65rem; }
+.quantityPanel input:focus-visible, .quantityPanel button:focus-visible { outline:2px solid #18382e; outline-offset:2px; }
+.quantityPanel .error { color:#a52626; }

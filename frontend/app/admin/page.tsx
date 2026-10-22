@@ -1,38 +1,6 @@
-import type { Metadata } from "next";
-import Link from "next/link";
-import { AdminSignOut } from "@/components/AdminSignOut";
-
-export const metadata: Metadata = {
-  title: "Admin Overview | Luminoza",
-  robots: { index: false, follow: false },
-};
-
-const adminSections = [
-  { href: "/admin/enquiries", title: "Customer enquiries", description: "Review submitted wishlists and customer requests." },
-  { href: "/admin/categories", title: "Store categories", description: "Organize the product catalogue and category hierarchy." },
-  { href: "/admin/analytics", title: "Wishlist analytics", description: "See product interest across submitted wishlists." },
-  { href: "/admin/users", title: "Admin accounts", description: "Add administrators or disable accounts that no longer need access." },
-];
-
-export default function AdminOverviewPage() {
-  return (
-    <div className="container py-8 admin-overview">
-      <div className="admin-overview-heading">
-        <div>
-          <p className="admin-eyebrow">Luminoza / Operations</p>
-          <h1>Administration</h1>
-          <p>Store management</p>
-        </div>
-        <AdminSignOut />
-      </div>
-      <nav className="admin-section-grid" aria-label="Admin sections">
-        {adminSections.map((section) => (
-          <Link className="admin-section-link" href={section.href} key={section.href}>
-            <span>{section.title}</span>
-            <p>{section.description}</p>
-          </Link>
-        ))}
-      </nav>
-    </div>
-  );
-}
+import type {Metadata} from 'next';
+import Link from 'next/link';
+import {AdminShell} from '@/components/AdminShell';
+export const metadata:Metadata={title:'Administration | Luminoza',robots:{index:false,follow:false}};
+const sections=[{href:'/admin/homepage',title:'Homepage collections',description:'Curated groups, homepage visibility and product enquiry reference.'},{href:'/admin/catalogue',title:'Catalogue',description:'Products, bulk import, review/publication and reference data.'},{href:'/admin/enquiries',title:'Customer enquiries',description:'Customer requirements, requested products and versioned offers.'},{href:'/admin/analytics',title:'Wishlist analytics',description:'Recorded product interest across wishlists and submitted enquiries.'},{href:'/admin/users',title:'Admin accounts',description:'Manage administrator access.'}];
+export default function AdminOverviewPage(){return <AdminShell active="overview"><div className="admin-overview"><div className="manager-page-heading"><h1>Administration</h1><p>Choose a workspace to manage store operations.</p></div><nav className="admin-section-grid" aria-label="Admin workspace shortcuts">{sections.map(s=><Link className="admin-section-link" href={s.href} key={s.href}><span>{s.title}</span><p>{s.description}</p></Link>)}</nav></div></AdminShell>;}

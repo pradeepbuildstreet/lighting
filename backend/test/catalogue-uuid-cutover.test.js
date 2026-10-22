@@ -1,0 +1,12 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict'),path=require('node:path'),{pathToFileURL}=require('node:url');
+const {catalogueProductId,itemIdentity,wishlistProductHref}=require('../../frontend/lib/catalogue-item-identity');
+const id='12345678-1234-4234-8234-123456789abc';
+test('catalogue UUID is canonical identity',()=>assert.equal(itemIdentity({product_id:id,sku:'IGNORED'}),id));
+test('uppercase UUID canonicalized',()=>assert.equal(catalogueProductId(id.toUpperCase()),id));
+test('missing identity never falls back to SKU',()=>assert.throws(()=>itemIdentity({sku:'OLD-SKU'}),/UUID required/));
+test('invalid input identities rejected',()=>{for(const v of [null,undefined,42,'SKU','legacy:SKU',' '+id,'/products/sku',id+'?x'])assert.throws(()=>catalogueProductId(v));});
+test('saved category and href do not choose legacy route',()=>assert.equal(wishlistProductHref({product_id:id,category_slug:'old',sku:'OLD',product_href:'/products/old/OLD'}),'/catalogue/product-id/'+id));
+test('valid UUID does not depend on SKU presence',()=>assert.equal(wishlistProductHref({product_id:id}),'/catalogue/product-id/'+id));
+test('admin analytics identity uses same UUID helper',async()=>{const ui=await import(pathToFileURL(path.resolve(__dirname,'../../frontend/lib/admin-ui-model.mjs')).href);assert.equal(ui.identity({product_id:id,sku:'S'}),'catalogue:'+id);assert.equal(ui.productLink({product_id:id}),'/catalogue/product-id/'+id);assert.throws(()=>ui.identity({sku:'S'}));});
+test('analytics SQL groups by UUID without legacy identity branch',async()=>{const {analytics}=require('../services/wishlist-analytics-ui');let sql;await analytics(async s=>{sql=s;return {rows:[]};});assert.ok(!sql.includes('legacy:'));assert.ok(!sql.includes('CASE WHEN i.product_id IS NULL'));assert.ok(sql.includes("'catalogue:'||i.product_id::text"));});

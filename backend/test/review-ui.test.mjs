@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {canReview,candidateState,reviewError,publicationAction} from '../../frontend/app/admin/catalogue/review-state.mjs';
+test('completed current unreviewed audit enables review',()=>assert.equal(canReview({status:'completed',product_revision:'2'},{revision:2},[]),true));
+test('stale revision disables review',()=>assert.equal(canReview({status:'completed',product_revision:1},{revision:2},[]),false));
+test('incomplete audit disables review',()=>assert.equal(canReview({status:'running',product_revision:2},{revision:2},[]),false));
+test('previous review disables second decision',()=>assert.equal(canReview({status:'completed',product_revision:2},{revision:2},[{}]),false));
+test('changed candidate flagged',()=>assert.equal(candidateState({evidence:{candidate_revision:1},current_revision:2}),'changed'));
+test('missing evidence flagged unknown',()=>assert.equal(candidateState({current_revision:2}),'unknown'));
+test('matching candidate snapshot current',()=>assert.equal(candidateState({evidence:{candidate_revision:'2'},current_revision:2}),'current'));
+test('blank notes rejected',()=>assert.ok(reviewError('approve_distinct','   ','')));
+test('duplicate target mandatory',()=>assert.ok(reviewError('confirm_duplicate','Reviewed','')));
+test('valid distinct review allowed',()=>assert.equal(reviewError('approve_distinct','Reviewed',''),''));
+test('readiness permits explicit publish',()=>assert.equal(publicationAction({product:{published:false},can_publish:true}),'publish'));
+test('unpublish permitted despite blockers',()=>assert.equal(publicationAction({product:{published:true},can_publish:false}),'unpublish'));
+test('missing readiness blocks publish',()=>assert.equal(publicationAction(null),'blocked'));

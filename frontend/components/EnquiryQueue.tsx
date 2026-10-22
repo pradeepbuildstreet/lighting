@@ -1,64 +1,12 @@
 "use client";
-
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { API_BASE_URL } from "@/lib/categories";
-
-type EnquirySummary = {
-  share_token: string;
-  customer_name: string;
-  mobile_number: string;
-  email?: string | null;
-  pin_code: string;
-  status: string;
-  communication_channel?: string | null;
-  item_count: number;
-  submitted_at: string;
-};
-
-export function EnquiryQueue() {
-  const [enquiries, setEnquiries] = useState<EnquirySummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    fetch(`${API_BASE_URL}/wishlists/admin`, { cache: "no-store", credentials: "include" })
-      .then(async (response) => {
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || "Could not load enquiries.");
-        setEnquiries(data.enquiries || []);
-      })
-      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load enquiries."))
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) return <p>Loading enquiries...</p>;
-  if (error) return <p className="manager-error" role="alert">{error}</p>;
-  if (!enquiries.length) return <p className="manager-empty">No submitted enquiries yet.</p>;
-
-  return (
-    <div className="enquiry-table-wrap">
-      <table className="enquiry-table">
-        <thead>
-          <tr><th>Customer</th><th>Mobile</th><th>Channel</th><th>Products</th><th>Status</th><th>Received</th><th /></tr>
-        </thead>
-        <tbody>
-          {enquiries.map((enquiry) => (
-            <tr key={enquiry.share_token}>
-              <td data-label="Customer">
-                <Link href={`/admin/enquiries/${enquiry.share_token}`}>{enquiry.customer_name}</Link>
-                {enquiry.email && <small>{enquiry.email}</small>}
-              </td>
-              <td data-label="Mobile">{enquiry.mobile_number}</td>
-              <td data-label="Channel"><span className="enquiry-status">{enquiry.communication_channel === "whatsapp" ? "WhatsApp opened" : "Website"}</span></td>
-              <td data-label="Products">{enquiry.item_count}</td>
-              <td data-label="Status"><span className={`enquiry-status is-${enquiry.status}`}>{enquiry.status}</span></td>
-              <td data-label="Received">{new Date(enquiry.submitted_at).toLocaleDateString("en-IN")}</td>
-              <td data-label="Details"><Link href={`/admin/enquiries/${enquiry.share_token}`}>Open</Link></td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+import Link from 'next/link';
+import {useState} from 'react';
+import {useAdminList} from '@/lib/use-admin-list';
+import {filterEnquiries,pageRows,statusLabel} from '@/lib/admin-ui-model.mjs';
+import {AdminListFeedback,AdminPagination} from './AdminListFeedback';
+type Enquiry={share_token:string;customer_name:string;mobile_number:string;email?:string|null;pin_code:string;status:string;communication_channel?:string|null;item_count:number;total_quantity:number|string;submitted_at:string};
+export function EnquiryQueue(){const {rows,loading,error,refresh}=useAdminList<Enquiry>('/api/wishlists/admin','enquiries'),[query,setQuery]=useState(''),[status,setStatus]=useState('all'),[page,setPage]=useState(1),result=pageRows(filterEnquiries(rows,query,status),page);
+ return <><div className="admin-controls"><label>Search enquiries<input type="search" value={query} onChange={e=>{setQuery(e.target.value);setPage(1);}} placeholder="Customer, mobile, email or PIN"/></label><label>Status<select value={status} onChange={e=>{setStatus(e.target.value);setPage(1);}}>{['all','submitted','contacted','closed'].map(x=><option key={x} value={x}>{x==='all'?'All statuses':statusLabel(x)}</option>)}</select></label><button type="button" disabled={loading} onClick={refresh}>Refresh</button></div><AdminListFeedback loading={loading} error={error} retry={refresh}/><p className="admin-result-count" aria-live="polite">{result.total} matching enquiries · Newest first{error?' · Previously loaded results':''}</p>
+ {!loading&&!error&&!result.total&&<p className="manager-empty">{rows.length?'No enquiries match these filters.':'No submitted enquiries yet.'}</p>}
+ {!!result.rows.length&&<div className="enquiry-table-wrap"><table className="enquiry-table"><caption className="sr-only">Customer enquiries, newest first</caption><thead><tr>{['Customer','Mobile','Channel','Products','Total qty','Status','Received','Details'].map(x=><th key={x} scope="col">{x}</th>)}</tr></thead><tbody>{result.rows.map(r=><tr key={r.share_token}><td data-label="Customer"><Link href={'/admin/enquiries/'+encodeURIComponent(r.share_token)}>{r.customer_name}</Link>{r.email&&<small>{r.email}</small>}</td><td data-label="Mobile"><a href={'tel:'+r.mobile_number}>{r.mobile_number}</a></td><td data-label="Channel">{r.communication_channel==='whatsapp'?'WhatsApp opened':'Website'}</td><td data-label="Products">{r.item_count}</td><td data-label="Total qty">{r.total_quantity}</td><td data-label="Status"><span className={'enquiry-status is-'+r.status}>{statusLabel(r.status)}</span></td><td data-label="Received">{new Date(r.submitted_at).toLocaleString('en-IN')}</td><td data-label="Details"><Link href={'/admin/enquiries/'+encodeURIComponent(r.share_token)}>Open enquiry</Link></td></tr>)}</tbody></table></div>}<AdminPagination page={result.page} pages={result.pages} onChange={setPage}/></>;
 }

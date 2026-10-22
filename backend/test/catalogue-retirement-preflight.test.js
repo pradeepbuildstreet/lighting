@@ -1,0 +1,16 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {COUNT_KEYS,SQL,interpretFacts,inspectRetirement}=require('../services/catalogue-retirement-preflight');
+const clean=Object.fromEntries(COUNT_KEYS.map(k=>[k,0]));clean.active_admins=1;clean.active_admins_with_password=1;
+test('empty workflows with admin ready for review',()=>assert.equal(interpretFacts(clean).can_remove_sku_fallbacks,true));
+test('unmapped wishlist blocks strict fallback removal',()=>assert.equal(interpretFacts({...clean,wishlist_items:1,unmapped_wishlist_items:1}).can_remove_sku_fallbacks,false));
+test('unmapped offer blocks strict fallback removal',()=>assert.equal(interpretFacts({...clean,offer_items:1,unmapped_offer_items:1}).can_remove_sku_fallbacks,false));
+test('placeholder-only admin blocks fallback retirement',()=>assert.equal(interpretFacts({...clean,active_admins_with_password:0}).can_remove_sku_fallbacks,false));
+test('historical missing products warn without being called unmapped',()=>{const r=interpretFacts({...clean,offer_items:1,missing_offer_products:1});assert.equal(r.can_remove_sku_fallbacks,true);assert.equal(r.warnings.length,1);});
+test('legacy media reported',()=>assert.ok(interpretFacts({...clean,wishlist_items:1,legacy_wishlist_images:1}).warnings.length));
+test('pg count strings accepted',()=>assert.equal(interpretFacts(Object.fromEntries(Object.entries(clean).map(([k,v])=>[k,String(v)]))).can_remove_sku_fallbacks,true));
+test('malformed counts fail closed',()=>{for(const r of [undefined,{}, {...clean,offer_items:null},{...clean,offer_items:-1},{...clean,offer_items:true},{...clean,offer_items:'NaN'}])assert.throws(()=>interpretFacts(r));});
+test('inconsistent counts rejected',()=>assert.throws(()=>interpretFacts({...clean,offer_items:0,unmapped_offer_items:1})));
+test('preflight is read-only before fact query',async()=>{const calls=[];const r=await inspectRetirement({transaction:fn=>fn({query:async sql=>{calls.push(sql);return {rows:[sql.includes('current_database()')?{database_name:'test'}:clean]};}})});assert.match(calls[0],/READ ONLY/);assert.equal(calls.at(-1),SQL);assert.equal(r.database_name,'test');});
+test('fact SQL has no mutations',()=>assert.doesNotMatch(SQL,/\b(INSERT|UPDATE|DELETE|ALTER|DROP|TRUNCATE)\b/i));
+test('database errors are not clean reports',async()=>assert.rejects(inspectRetirement({transaction:fn=>fn({query:async()=>{throw Error('unavailable');}})}),/unavailable/));

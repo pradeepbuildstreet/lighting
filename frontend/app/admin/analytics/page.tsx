@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { ManagerTabs } from "@/components/ManagerTabs";
+import { AdminShell } from "@/components/AdminShell";
 import { WishlistAnalytics } from "@/components/WishlistAnalytics";
 
 export const metadata: Metadata = {
@@ -9,14 +9,13 @@ export const metadata: Metadata = {
 
 export default function WishlistAnalyticsPage() {
   return (
-    <div className="container py-8 manager-page">
-      <ManagerTabs active="analytics" />
+    <AdminShell active="analytics">
       <div className="manager-page-heading">
         <p className="wishlist-eyebrow">Manager</p>
         <h1>Wishlist Analytics</h1>
         <p>Aggregate customer interest to help guide inventory decisions. Customer identities are not shown here.</p>
       </div>
       <WishlistAnalytics />
-    </div>
+    </AdminShell>
   );
 }

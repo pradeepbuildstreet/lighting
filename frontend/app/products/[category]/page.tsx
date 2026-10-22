@@ -1,16 +1,5 @@
-import { notFound, redirect } from "next/navigation";
-import { getProductBySku } from "@/lib/products";
-
-type Props = {
-  params: {
-    category: string;
-  };
-};
-
-export default async function LegacyProductDetailsPage({ params }: Props) {
-  const product = await getProductBySku(params.category);
-
-  if (!product?.category) notFound();
-
-  redirect(`/products/${product.category}/${product.sku}`);
-}
+import type {Metadata} from 'next';
+import {CatalogueRouteTransition} from '@/components/CatalogueRouteTransition';
+export const dynamic='force-dynamic';
+export const metadata:Metadata={robots:{index:false,follow:false}};
+export default function AliasPage({params}:{params:{category:string}}){return <CatalogueRouteTransition value={params.category} preferCategory/>;}

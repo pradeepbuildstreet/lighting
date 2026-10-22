@@ -1,12 +1,4 @@
-import Link from "next/link";
-
-export function ManagerTabs({ active }: { active: "enquiries" | "categories" | "analytics" | "admins" }) {
-  return (
-    <nav className="manager-tabs" aria-label="Manager sections">
-      <Link href="/admin/enquiries" aria-current={active === "enquiries" ? "page" : undefined}>Enquiries</Link>
-      <Link href="/admin/analytics" aria-current={active === "analytics" ? "page" : undefined}>Wishlist analytics</Link>
-      <Link href="/admin/categories" aria-current={active === "categories" ? "page" : undefined}>Categories</Link>
-      <Link href="/admin/users" aria-current={active === "admins" ? "page" : undefined}>Admin accounts</Link>
-    </nav>
-  );
-}
+import Link from 'next/link';
+import type {AdminSection} from './AdminShell';
+const sections=[['overview','/admin','Overview'],['catalogue','/admin/catalogue','Catalogue'],['enquiries','/admin/enquiries','Enquiries'],['analytics','/admin/analytics','Wishlist analytics'],['homepage','/admin/homepage','Homepage collections'],['admins','/admin/users','Admin accounts']] as const;
+export function ManagerTabs({active}:{active:AdminSection}){return <nav className="manager-tabs" aria-label="Admin sections">{sections.map(([key,href,label])=><Link key={key} href={href} prefetch={false} aria-current={active===key?'page':undefined}>{label}</Link>)}</nav>;}

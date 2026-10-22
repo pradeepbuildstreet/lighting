@@ -6,11 +6,13 @@ import { useWishlist } from "@/components/WishlistProvider";
 
 export function WishlistButton({
   sku,
+  productId,
   name,
-  wishlistCount = 0,
+  wishlistCount,
   compact = false,
 }: {
   sku: string;
+  productId?: string;
   name: string;
   wishlistCount?: number;
   compact?: boolean;
@@ -18,15 +20,15 @@ export function WishlistButton({
   const { wishlist, loading, addProduct, removeProduct } = useWishlist();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const item = wishlist?.items.find((wishlistItem) => wishlistItem.sku === sku);
+  const item = wishlist?.items.find((wishlistItem) => !!productId && wishlistItem.product_id === productId);
   const startsNewWishlist = !!wishlist && wishlist.status !== "draft";
 
   const handleToggle = async () => {
     setBusy(true);
     setError("");
     try {
-      if (item && !startsNewWishlist) await removeProduct(sku);
-      else await addProduct(sku);
+      if (item && !startsNewWishlist) await removeProduct(productId!);
+      else await addProduct(productId!);
     } catch (caught) {
       setError(caught instanceof Error && caught.name === "AbortError"
         ? "The request timed out. Check your connection and try again."
@@ -43,17 +45,17 @@ export function WishlistButton({
         className={`wishlist-add-button ${item ? "is-added" : ""}`}
         aria-busy={busy}
         aria-label={startsNewWishlist ? `Start a new wishlist and add ${name}` : item ? `Remove ${name} from wishlist` : `Add ${name} to wishlist`}
-        title={startsNewWishlist ? "Start a new wishlist" : item ? "Remove from wishlist" : "Add to wishlist"}
-        disabled={loading || busy}
+        title={!productId ? "Open the current catalogue product to add it to your wishlist" : startsNewWishlist ? "Start a new wishlist" : item ? "Remove from wishlist" : "Add to wishlist"}
+        disabled={loading || busy || !productId}
         onClick={() => void handleToggle()}
       >
         {busy
           ? <LoaderCircle className="wishlist-loader-icon" size={compact ? 19 : 20} aria-hidden="true" />
           : <Heart size={compact ? 19 : 20} fill={item ? "currentColor" : "none"} aria-hidden="true" />}
       </button>
-      <span className="wishlist-popularity" aria-label={`Wishlisted ${wishlistCount} times by all customers`}>
+      {typeof wishlistCount === "number" && (<span className="wishlist-popularity" aria-label={`Wishlisted ${wishlistCount} times by all customers`}>
         {wishlistCount} wishlisted
-      </span>
+      </span>)}
       {error && <span className="wishlist-button-error" role="status">{error}</span>}
     </span>
   );

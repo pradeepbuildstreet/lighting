@@ -1,0 +1,1 @@
+export default function Loading(){return <section className="container py-8" role="status" aria-live="polite"><h1 className="text-3xl font-bold">Lighting catalogue</h1><p>Loading products and filters…</p></section>;}

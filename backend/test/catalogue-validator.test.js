@@ -1,0 +1,27 @@
+const test=require('node:test');const assert=require('node:assert/strict');const V=require('../validators/catalogue');
+const id='11111111-1111-4111-8111-111111111111';
+const fixture={sku:'dl-new',name:'Pendant',product_kind:'fixture',specs:{fixture_type_id:id,light_source_mode:'replaceable'}};
+const light={sku:'lt-001',name:'LED',product_kind:'light',specs:{light_type_id:id,wattage:'8.5',voltage_min:200,voltage_max:250}};
+test('normalize SKU',()=>assert.equal(V.product(fixture).sku,'DL-NEW'));
+test('whitespace SKU rejected',()=>assert.throws(()=>V.product({...fixture,sku:'DL NEW'}),/whitespace/));
+test('fixture missing bulb data stays unknown',()=>assert.equal(V.product(fixture).spec.width_mm,null));
+test('missing fixture type',()=>assert.throws(()=>V.product({...fixture,specs:{}}),/fixture type/));
+test('light numeric strings',()=>assert.equal(V.product(light).spec.wattage,8.5));
+test('negative wattage',()=>assert.throws(()=>V.product({...light,specs:{...light.specs,wattage:-1}}),/wattage/));
+test('paired voltage required',()=>assert.throws(()=>V.product({...light,specs:{...light.specs,voltage_max:null}}),/both voltage/));
+test('voltage range ordered',()=>assert.throws(()=>V.product({...light,specs:{...light.specs,voltage_min:260}}),/minimum/));
+test('primary must be assigned',()=>assert.throws(()=>V.product({...fixture,primary_category_id:id}),/assigned/));
+test('duplicate categories',()=>assert.throws(()=>V.product({...fixture,category_ids:[id,id]}),/Duplicate/));
+test('valid primary',()=>assert.equal(V.product({...fixture,category_ids:[id],primary_category_id:id}).primary,id));
+test('unknown dimming remains null',()=>assert.equal(V.product(light).spec.dimmable,null));
+test('zero selling price accepted',()=>assert.equal(V.product({...fixture,selling_price:0}).selling_price,0));
+test('null price allowed for draft',()=>assert.equal(V.product(fixture).selling_price,null));
+test('reject NaN',()=>assert.throws(()=>V.num('oops','number'),/Invalid/));
+test('reject boolean numeric',()=>assert.throws(()=>V.num(true,'number'),/Invalid/));
+test('strict boolean',()=>assert.throws(()=>V.bool('false'),/Boolean/));
+test('JSON must be object',()=>assert.throws(()=>V.json([],'spec'),/object/));
+test('UUID required',()=>assert.throws(()=>V.uuid('bad'),/Invalid/));
+test('unsupported product kind',()=>assert.throws(()=>V.product({...fixture,product_kind:'other'}),/product_kind/));
+
+test('replaceable rejects integrated data',()=>assert.throws(()=>V.product({...fixture,specs:{...fixture.specs,inbuilt_specs:{wattage:10}}}),/Replaceable/));
+test('integrated JSON retained',()=>assert.equal(V.product({...fixture,specs:{...fixture.specs,light_source_mode:'integrated',inbuilt_specs:{wattage:10}}}).spec.inbuilt_specs.wattage,10));

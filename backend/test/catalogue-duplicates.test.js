@@ -1,0 +1,25 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const S=require('../services/catalogue-duplicate-scoring');
+const {createDuplicateService,digest}=require('../services/catalogue-duplicates');
+const id='11111111-1111-1111-1111-111111111111',other='22222222-2222-2222-2222-222222222222';
+const a={id,revision:1,product_kind:'light',name:'Warm LED lamp',brand:null,model_number:null,specs:{},image_hashes:[]};
+const b={...a,id:other};
+test('self not candidate',()=>assert.equal(S.compare(a,a),null));
+test('different kinds not candidates',()=>assert.equal(S.compare(a,{...b,product_kind:'fixture'}),null));
+test('missing brand model not a match',()=>assert.equal(S.compare(a,b).overall_score,20));
+test('brand model yields explainable identity evidence',()=>{const r=S.compare({...a,brand:'Brand',model_number:'M1'},{...b,brand:' brand ',model_number:'m1'});assert.equal(r.overall_score,75);assert.ok(r.evidence.signals.some(s=>s.kind==='brand_model'));});
+test('sparse known specs penalised',()=>{const r=S.compare({...a,specs:{wattage:12}},{...b,specs:{wattage:12}});assert.equal(r.spec_score,11.111);});
+test('exact image hash is not perceptual similarity',()=>{const hash='a'.repeat(64);const r=S.compare({...a,image_hashes:[hash]},{...b,image_hashes:[hash]});assert.equal(r.overall_score,90);assert.equal(r.image_score,null);assert.ok(r.evidence.signals.some(s=>s.kind==='exact_image_sha256'));});
+test('invalid hashes ignored',()=>assert.equal(S.compare({...a,image_hashes:['bad']},{...b,image_hashes:['bad']}).overall_score,20));
+test('revision snapshots included',()=>{const r=S.compare(a,{...b,revision:3});assert.equal(r.evidence.subject_revision,'1');assert.equal(r.evidence.candidate_revision,'3');});
+test('numeric strings can match numeric specs',()=>{const r=S.compare({...a,specs:{wattage:12}},{...b,specs:{wattage:'12'}});assert.ok(r.spec_score>0);});
+test('null boolean not treated as false',()=>assert.equal(S.compare({...a,specs:{dimmable:false}},{...b,specs:{dimmable:null}}).spec_score,0));
+test('digest changes when membership or revision changes',()=>{assert.notEqual(digest([a]),digest([a,b]));assert.notEqual(digest([a]),digest([{...a,revision:2}]));});
+test('digest independent of row ordering',()=>assert.equal(digest([a,b]),digest([b,a])));
+function mock(audit,product){const calls=[];const c={query:async(sql)=>{calls.push(sql);if(sql.includes('FROM product_duplicate_audits WHERE id='))return {rows:audit?[audit]:[]};if(sql.includes('FROM products WHERE id='))return {rows:product?[product]:[]};return {rows:[]};}};return {calls,service:createDuplicateService({actor:async()=>{},transaction:async f=>f(c)})};}
+test('audit requires current product revision',async()=>{const h=mock(null,a);await assert.rejects(h.service.run({id},id,2),e=>e.status===409);});
+test('review requires notes before database access',async()=>{const h=mock(null,a);await assert.rejects(h.service.review({id},other,'approve_distinct',''),e=>e.status===400);assert.equal(h.calls.length,0);});
+test('incomplete audit cannot be approved',async()=>{const h=mock({id:other,product_id:id,status:'running',product_revision:1},a);await assert.rejects(h.service.review({id},other,'approve_distinct','Reviewed'),e=>e.status===409);});
+test('stale revision cannot be approved',async()=>{const h=mock({id:other,product_id:id,status:'completed',product_revision:1},{...a,revision:2});await assert.rejects(h.service.review({id},other,'approve_distinct','Reviewed'),e=>e.status===409);});
+test('duplicate decision requires target',async()=>{const h=mock(null,a);await assert.rejects(h.service.review({id},other,'confirm_duplicate','Reviewed'),e=>e.status===400);});

@@ -1,0 +1,45 @@
+"use strict";
+const path=require('node:path');
+require('dotenv').config({path:path.join(__dirname,'.env')});
+const express=require('express');const cors=require('cors');const cookieParser=require('cookie-parser');
+const {loadConfig}=require('./config/runtime');const config=loadConfig();
+const {pool,query}=require('./db/database');
+const app=express();app.disable('x-powered-by');app.set('trust proxy',config.trustProxy);
+app.use(cors({origin:(origin,callback)=>callback(null,!origin||config.origins.includes(origin)),credentials:true}));
+app.use(cookieParser());app.use(express.json({limit:'1mb'}));app.use(express.urlencoded({extended:false,limit:'1mb'}));
+// Existing uploads remain available; new managed media is not exposed until its upload pipeline is implemented.
+app.use('/public',express.static(path.join(__dirname,'../frontend/public'),{dotfiles:'deny'}));
+for (const [mount,file] of [
+ ['/api/auth','auth'],['/api/products','products'],['/api/search','search'],
+ ['/api/upload','upload'],['/api/excel-import','excel-import'],['/api/seo','seo'],
+ ['/api/categories','categories'],['/api/wishlists','wishlists'],['/api/offers','offers']
+]) app.use(mount,require(`./api/${file}`));
+app.use('/api/catalogue',require('./api/public-catalogue-v1').createRouter(require('express'),require('./db/catalogue'),require('express-rate-limit')));
+app.use('/api/admin/catalogue',require('./api/catalogue-admin'));
+app.get('/api/health',(_req,res)=>res.set('Cache-Control','no-store').json({status:'ok',release:'1A'}));
+app.get('/api/ready',async(_req,res)=>{
+ try{await query('SELECT sku, category_id, status FROM products LIMIT 0');res.set('Cache-Control','no-store').json({status:'ready',schema:'legacy'});}
+ catch(_){res.status(503).set('Cache-Control','no-store').json({status:'not_ready'});}
+});
+app.use((error,req,res,_next)=>{
+ console.error(JSON.stringify({event:'request_failed',method:req.method,path:req.path,code:error.code || error.type || 'ERROR'}));
+ const status=error.status===413?413:error.status===400?400:500;
+ res.status(status).json({error:status===413?'Request too large':status===400?'Invalid request':'Internal server error'});
+});
+let server;
+async function start(){
+ // Fail early if the new normalized schema is used with legacy route code.
+ await query('SELECT sku, category_id, status FROM products LIMIT 0');
+ server=app.listen(config.port,config.host,()=>console.log(`API listening on ${config.host}:${config.port}`));
+ server.on('error',error=>{console.error(JSON.stringify({event:'listen_failed',code:error.code}));process.exitCode=1;pool.end();});
+}
+async function stop(){
+ if(!server){await pool.end();return;}
+ const timer=setTimeout(()=>process.exit(1),10000);timer.unref();
+ server.close(async()=>{await require('./db/catalogue').close();await pool.end();clearTimeout(timer);});
+}
+if(require.main===module){
+ start().catch(async error=>{console.error(JSON.stringify({event:'startup_failed',code:error.code||'CONFIG_ERROR',message:'Check environment and legacy database schema'}));process.exitCode=1;await pool.end();});
+ process.once('SIGTERM',stop);process.once('SIGINT',stop);
+}
+module.exports={app,start,stop};
