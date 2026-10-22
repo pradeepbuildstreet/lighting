@@ -15,9 +15,22 @@ const config = loadConfig();
 
 const { pool, query } = require("./db/database");
 const catalogue = require("./db/catalogue");
-const {checkImplementationReadiness} = require("./services/implementation-readiness");
+const {
+  checkImplementationReadiness,
+} = require("./services/implementation-readiness");
 
 const app = express();
+
+let server;
+let shuttingDown = false;
+let readinessTimer = null;
+let readinessInFlight = null;
+
+const readiness = {
+  ready: false,
+  phase: "starting",
+  lastCheckedAt: null,
+};
 
 app.disable("x-powered-by");
 app.set("trust proxy", config.trustProxy);
@@ -31,8 +44,59 @@ app.use(
   })
 );
 
+/*
+ * Liveness: the HTTP process is running.
+ * This does not mean the database/schema is ready.
+ */
+app.get("/api/health", (_req, res) => {
+  res.set("Cache-Control", "no-store").json({
+    status: "ok",
+    release: "1A",
+  });
+});
+
+/*
+ * Readiness: normal application traffic may be accepted.
+ * Uses the background check result instead of starting another
+ * database/schema check for every probe.
+ */
+app.get("/api/ready", (_req, res) => {
+  res
+    .status(readiness.ready ? 200 : 503)
+    .set("Cache-Control", "no-store")
+    .json({
+      status: readiness.ready ? "ready" : "not_ready",
+      phase: readiness.phase,
+      checks: "application_and_catalogue_schema",
+      lastCheckedAt: readiness.lastCheckedAt,
+    });
+});
+
+/*
+ * Health/readiness probes are registered above this gate.
+ * All application routes below remain unavailable until the
+ * existing database/schema checks have passed.
+ */
+app.use((_req, res, next) => {
+  if (readiness.ready && !shuttingDown) {
+    return next();
+  }
+
+  return res
+    .status(503)
+    .set({
+      "Cache-Control": "no-store",
+      "Retry-After": "5",
+    })
+    .json({
+      error: "Application is not ready",
+      status: "not_ready",
+    });
+});
+
 app.use(cookieParser());
 app.use(express.json({ limit: "1mb" }));
+
 app.use(
   express.urlencoded({
     extended: false,
@@ -49,12 +113,21 @@ app.use(
 );
 
 // Retired APIs must never read/write the legacy catalogue.
-app.use([
-  '/api/products', '/api/search', '/api/categories',
-  '/api/excel-import', '/api/seo', '/api/upload'
-], (_req,res)=>res.status(410).set('Cache-Control','no-store').json({
-  error:'Legacy catalogue API retired. Use /api/catalogue or /api/admin/catalogue.'
-}));
+app.use(
+  [
+    "/api/products",
+    "/api/search",
+    "/api/categories",
+    "/api/excel-import",
+    "/api/seo",
+    "/api/upload",
+  ],
+  (_req, res) =>
+    res.status(410).set("Cache-Control", "no-store").json({
+      error:
+        "Legacy catalogue API retired. Use /api/catalogue or /api/admin/catalogue.",
+    })
+);
 
 for (const [mount, file] of [
   ["/api/auth", "auth"],
@@ -78,50 +151,21 @@ app.use(
   require("./api/catalogue-admin")
 );
 
-// Optional authenticated read-only SEO connector; catalogue rules stay authoritative.
-app.use('/api/seo-connector', require('./api/seo-connector.cjs').createRouter(
-  express, require('./services/public-catalogue-v1').createService(catalogue)
-));
+// Optional authenticated read-only SEO connector.
+// Existing catalogue publication rules remain authoritative.
+app.use(
+  "/api/seo-connector",
+  require("./api/seo-connector.cjs").createRouter(
+    express,
+    require("./services/public-catalogue-v1").createService(catalogue)
+  )
+);
 
 require("./api/homepage-collections").mount(app);
-
 require("./services/public-enquiry-counts").mount(app);
 require("./services/compatibility-assessments").mount(app);
-app.get("/api/health", (_req, res) => {
-  res.set("Cache-Control", "no-store").json({
-    status: "ok",
-    release: "1A",
-  });
-});
 
-async function checkDatabaseConnections() {
-  return checkImplementationReadiness({query}, catalogue);
-}
-
-app.get("/api/ready", async (_req, res) => {
-  try {
-    await checkDatabaseConnections();
-
-    res.set("Cache-Control", "no-store").json({
-      status: "ready",
-      checks: "application_and_catalogue_schema",
-    });
-  } catch (error) {
-    console.error(
-      JSON.stringify({
-        event: "readiness_failed",
-        connection: error.connectionCheck || "unknown",
-        code: error.code || "CONFIG_ERROR",
-      })
-    );
-
-    res.status(503).set("Cache-Control", "no-store").json({
-      status: "not_ready",
-    });
-  }
-});
-
-app.use((error, req, res, _next) => {
+app.use((error, req, res, next) => {
   console.error(
     JSON.stringify({
       event: "request_failed",
@@ -131,6 +175,10 @@ app.use((error, req, res, _next) => {
     })
   );
 
+  if (res.headersSent) {
+    return next(error);
+  }
+
   const status =
     error.status === 413
       ? 413
@@ -138,7 +186,7 @@ app.use((error, req, res, _next) => {
         ? 400
         : 500;
 
-  res.status(status).json({
+  return res.status(status).json({
     error:
       status === 413
         ? "Request too large"
@@ -148,8 +196,78 @@ app.use((error, req, res, _next) => {
   });
 });
 
-let server;
-let shuttingDown = false;
+async function checkDatabaseConnections() {
+  return checkImplementationReadiness({ query }, catalogue);
+}
+
+/*
+ * Runs one readiness check at a time.
+ * Failed checks keep application traffic blocked.
+ * Periodic checks also detect failure and recovery after startup.
+ */
+function refreshReadiness() {
+  if (shuttingDown) {
+    return Promise.resolve();
+  }
+
+  if (readinessInFlight) {
+    return readinessInFlight;
+  }
+
+  if (!readiness.ready) {
+    readiness.phase = "checking";
+  }
+
+  readinessInFlight = Promise.resolve()
+    .then(() => checkDatabaseConnections())
+    .then(() => {
+      if (shuttingDown) {
+        return;
+      }
+
+      const becameReady = !readiness.ready;
+
+      readiness.ready = true;
+      readiness.phase = "ready";
+      readiness.lastCheckedAt = new Date().toISOString();
+
+      if (becameReady) {
+        console.log(
+          JSON.stringify({
+            event: "application_ready",
+          })
+        );
+      }
+    })
+    .catch((error) => {
+      if (shuttingDown) {
+        return;
+      }
+
+      readiness.ready = false;
+      readiness.phase = "checks_failed";
+      readiness.lastCheckedAt = new Date().toISOString();
+
+      // Do not log database URLs, passwords, or raw error objects.
+      console.error(
+        JSON.stringify({
+          event: "readiness_failed",
+          connection: error.connectionCheck || "unknown",
+          code: error.code || "CONFIG_ERROR",
+        })
+      );
+    })
+    .finally(() => {
+      readinessInFlight = null;
+
+      if (!shuttingDown) {
+        readinessTimer = setTimeout(refreshReadiness, 30000);
+        readinessTimer.unref();
+      }
+    });
+
+  return readinessInFlight;
+}
 
 async function closeDatabaseConnections() {
   try {
@@ -160,11 +278,24 @@ async function closeDatabaseConnections() {
 }
 
 async function start() {
-  // Verify current application/catalogue schema before accepting requests.
-  await checkDatabaseConnections();
+  if (shuttingDown) {
+    throw new Error("Cannot start while shutting down");
+  }
 
+  if (server) {
+    return server;
+  }
+
+  /*
+   * Register the HTTP listener before waiting for remote PostgreSQL.
+   * The readiness middleware still prevents application access.
+   */
   server = app.listen(config.port, config.host, () => {
-    console.log(`API listening on ${config.host}:${config.port}`);
+    console.log(
+      `API listening on ${config.host}:${config.port}; readiness checks pending`
+    );
+
+    void refreshReadiness();
   });
 
   server.on("error", (error) => {
@@ -186,11 +317,23 @@ async function start() {
       );
     });
   });
+
+  return server;
 }
 
 async function stop() {
-  if (shuttingDown) return;
+  if (shuttingDown) {
+    return;
+  }
+
   shuttingDown = true;
+  readiness.ready = false;
+  readiness.phase = "stopping";
+
+  if (readinessTimer) {
+    clearTimeout(readinessTimer);
+    readinessTimer = null;
+  }
 
   const timer = setTimeout(() => process.exit(1), 10000);
   timer.unref();
@@ -199,8 +342,11 @@ async function stop() {
     if (server && server.listening) {
       await new Promise((resolve, reject) => {
         server.close((error) => {
-          if (error) reject(error);
-          else resolve();
+          if (error) {
+            reject(error);
+          } else {
+            resolve();
+          }
         });
       });
     }
@@ -211,6 +357,13 @@ async function stop() {
   }
 }
 
+/*
+ * Retain normal local execution:
+ * node server.js / npm start
+ *
+ * Hostinger uses hostinger.cjs instead, which starts explicitly
+ * even when the hosting loader imports its entry module.
+ */
 if (require.main === module) {
   start().catch(async (error) => {
     console.error(
@@ -218,7 +371,6 @@ if (require.main === module) {
         event: "startup_failed",
         connection: error.connectionCheck || "unknown",
         code: error.code || "CONFIG_ERROR",
-        message: "Check database connections and runtime configuration",
       })
     );
 
