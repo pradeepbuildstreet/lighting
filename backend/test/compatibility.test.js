@@ -1,0 +1,11 @@
+const test=require('node:test');const assert=require('node:assert/strict');const {evaluate}=require('../services/compatibility');
+const rule={light_type_id:'e27',max_wattage:12,supply_voltage_min:220,supply_voltage_max:240,max_diameter_mm:60,requires_dimmable:true};
+const light={light_type_id:'e27',wattage:10,voltage_min:200,voltage_max:250,diameter_mm:55,dimmable:true};
+test('compatible',()=>assert.equal(evaluate(rule,light).state,'compatible'));
+test('wattage exceeds limit',()=>assert.equal(evaluate(rule,{...light,wattage:15}).state,'incompatible'));
+test('overlap insufficient',()=>assert.equal(evaluate(rule,{...light,voltage_min:230}).state,'incompatible'));
+test('missing data',()=>assert.equal(evaluate(rule,{...light,diameter_mm:null}).state,'unverified'));
+test('pg numeric strings',()=>assert.equal(evaluate(rule,{...light,wattage:'10.00'}).state,'compatible'));
+test('type mismatch',()=>assert.equal(evaluate(rule,{...light,light_type_id:'g9'}).state,'incompatible'));
+test('dimming constraint',()=>assert.equal(evaluate(rule,{...light,dimmable:false}).state,'incompatible'));
+test('manual decision labelled',()=>assert.equal(evaluate(rule,light,{decision:'reject',reason:'Verified'}).source,'manual'));

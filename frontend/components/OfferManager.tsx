@@ -1,13 +1,20 @@
 "use client";
 
+import {offerRupeesOrNaN} from "@/lib/offer-pricing";
 import { useCallback, useEffect, useState } from "react";
-import { API_BASE_URL } from "@/lib/categories";
+import { API_BASE_URL } from "@/lib/api-base";
+
+import { lineAmount } from "@/lib/wishlist-quantity.mjs";
+import { itemIdentity } from "@/lib/wishlist-product";
+import {effectiveOfferStatus,statusLabel} from "@/lib/admin-ui-model.mjs";
+import {useAdminNavigationGuard} from "@/lib/use-admin-navigation-guard";
 
 type OfferProduct = {
+  product_id: string;
   sku: string;
   name: string;
   price: number;
-  add_count: number;
+  quantity: number;
 };
 
 type EnquiryForOffer = {
@@ -44,6 +51,7 @@ const blankTerms: OfferTerms = {
 const money = (value: number) => new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
+  minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
   maximumFractionDigits: 2,
 }).format(value);
 
@@ -57,6 +65,8 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [siteOrigin, setSiteOrigin] = useState("");
+  const [draftChanged,setDraftChanged] = useState(false);
+  useAdminNavigationGuard(draftChanged,busy,"offer");
 
   useEffect(() => {
     setSiteOrigin(window.location.origin);
@@ -73,46 +83,47 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
   }, [enquiry.share_token]);
 
   useEffect(() => {
-    setPrices(Object.fromEntries(enquiry.items.map((item) => [item.sku, Number(item.price).toFixed(2)])));
-    setDiscounts(Object.fromEntries(enquiry.items.map((item) => [item.sku, "0"])));
+    setPrices(Object.fromEntries(enquiry.items.map((item) => [itemIdentity(item), String(Math.floor(Number(item.price)))])));
+    setDiscounts(Object.fromEntries(enquiry.items.map((item) => [itemIdentity(item), item.price ? (((item.price - Math.floor(item.price)) / item.price) * 100).toFixed(2) : "0"])));
     void loadOffers().catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load offer history."));
   }, [enquiry.items, loadOffers]);
 
-  const listTotal = enquiry.items.reduce((sum, item) => sum + item.price * item.add_count, 0);
+  const listTotal = enquiry.items.reduce((sum, item) => sum + Math.round(Number(item.price) * 100) * item.quantity, 0) / 100;
   const offerTotal = enquiry.items.reduce((sum, item) => {
-    const price = Number(prices[item.sku]);
-    return sum + (Number.isFinite(price) ? price * item.add_count : 0);
-  }, 0);
+    const price = offerRupeesOrNaN(prices[itemIdentity(item)]);
+    return sum + (Number.isFinite(price) ? Math.round(price * 100) * item.quantity : 0);
+  }, 0) / 100;
   const discountPercent = listTotal ? Math.round(((listTotal - offerTotal) / listTotal) * 10000) / 100 : 0;
   const invalidPricing = enquiry.items.some((item) => {
-    const price = Number(prices[item.sku]);
-    const discount = Number(discounts[item.sku]);
-    return !Number.isFinite(price) || price < 0 || price > item.price ||
+    const price = offerRupeesOrNaN(prices[itemIdentity(item)]);
+    const discount = Number(discounts[itemIdentity(item)]);
+    return !item.product_id || prices[itemIdentity(item)]?.trim() === "" || !Number.isFinite(price) || price < 0 || price > item.price ||
       !Number.isFinite(discount) || discount < 0 || discount > 100;
   });
 
   function updateDiscount(item: OfferProduct, value: string) {
-    setDiscounts((current) => ({ ...current, [item.sku]: value }));
+    setDiscounts((current) => ({ ...current, [itemIdentity(item)]: value }));
     if (value.trim() === "") return;
     const percent = Number(value);
     if (!Number.isFinite(percent) || percent < 0 || percent > 100) return;
     const nextPrice = Math.round(item.price * (1 - percent / 100) * 100) / 100;
-    setPrices((current) => ({ ...current, [item.sku]: nextPrice.toFixed(2) }));
+    setPrices((current) => ({ ...current, [itemIdentity(item)]: String(Math.round(nextPrice)) }));
   }
 
   function updateOfferPrice(item: OfferProduct, value: string) {
-    setPrices((current) => ({ ...current, [item.sku]: value }));
+    setPrices((current) => ({ ...current, [itemIdentity(item)]: value }));
     if (value.trim() === "") {
-      setDiscounts((current) => ({ ...current, [item.sku]: "" }));
+      setDiscounts((current) => ({ ...current, [itemIdentity(item)]: "" }));
       return;
     }
     const price = Number(value);
     if (!Number.isFinite(price) || item.price <= 0) return;
     const percent = Math.round(((item.price - price) / item.price) * 10000) / 100;
-    setDiscounts((current) => ({ ...current, [item.sku]: percent.toFixed(2) }));
+    setDiscounts((current) => ({ ...current, [itemIdentity(item)]: percent.toFixed(2) }));
   }
 
   async function createOffer() {
+    if (busy || invalidPricing) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -122,7 +133,7 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          items: enquiry.items.map((item) => ({ sku: item.sku, offer_price: prices[item.sku] })),
+          items: enquiry.items.map((item) => ({ product_id: item.product_id, offer_price: offerRupeesOrNaN(prices[itemIdentity(item)]) })),
           terms: {
             ...terms,
             delivery_days: terms.delivery_days || null,
@@ -132,6 +143,7 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Could not create offer.");
+      setDraftChanged(false);
       setMessage(`Offer version ${data.offer.version} created. Open WhatsApp to share it with the customer.`);
       await loadOffers();
     } catch (caught) {
@@ -164,21 +176,21 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
   }
 
   return (
-    <section className="offer-manager" aria-labelledby="offer-manager-title">
+    <section className="offer-manager" aria-labelledby="offer-manager-title" onChangeCapture={()=>setDraftChanged(true)}>
       <div className="offer-manager-heading">
         <div>
           <p className="category-manager-eyebrow">Customer quotation</p>
           <h2 id="offer-manager-title">Prepare a price offer</h2>
         </div>
-        <p>Offer prices apply to this enquiry only; catalog prices remain unchanged.</p>
+        <p>Offer prices apply to this enquiry only; catalogue prices remain unchanged. Requested quantities carry forward from the submitted enquiry. Every version preserves its own quantities and agreed prices.</p>
       </div>
 
       <div className="offer-price-list">
-        <div className="offer-price-header"><span>Product</span><span>Qty</span><span>List price</span><span>Discount %</span><span>Offer price / unit</span></div>
+        <div className="offer-price-header"><span>Product</span><span>Qty</span><span>Enquiry snapshot price</span><span>Discount %</span><span>Offer price / unit</span></div>
         {enquiry.items.map((item) => (
-          <label className="offer-price-row" key={item.sku}>
+          <label className="offer-price-row" key={itemIdentity(item)}>
             <span className="offer-product-label"><strong>{item.name}</strong><small>SKU: {item.sku}</small></span>
-            <span>{item.add_count}</span>
+            <span>{item.quantity}</span>
             <span>{money(item.price)}</span>
             <span className="offer-price-edit">
               <small>Discount %</small>
@@ -188,12 +200,12 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
                 min="0"
                 max="100"
                 step="0.01"
-                value={discounts[item.sku] ?? "0"}
+                value={discounts[itemIdentity(item)] ?? "0"}
                 onChange={(event) => updateDiscount(item, event.target.value)}
               />
             </span>
             <span className="offer-price-edit">
-              <small>Offer price</small>
+              <small>Offer price (rounded to nearest ₹1)</small>
               <input
                 aria-label={`Offer price per unit for ${item.name}`}
                 type="number"
@@ -201,9 +213,11 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
                 max={item.price}
                 step="0.01"
                 required
-                value={prices[item.sku] || ""}
+                value={prices[itemIdentity(item)] || ""}
                 onChange={(event) => updateOfferPrice(item, event.target.value)}
+                onBlur={(event) => { const value=offerRupeesOrNaN(event.target.value); if(Number.isFinite(value)) updateOfferPrice(item,String(value)); }}
               />
+              <small style={{ display: "block" }}>Line amount: {Number.isFinite(offerRupeesOrNaN(prices[itemIdentity(item)])) ? money(lineAmount(offerRupeesOrNaN(prices[itemIdentity(item)]), item.quantity)) : "—"}</small>
             </span>
           </label>
         ))}
@@ -212,7 +226,7 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
       <div className="offer-totals">
         <span>Subtotal <strong>{money(listTotal)}</strong></span>
         <span>Discount offered <strong>{discountPercent}% ({money(Math.max(0, listTotal - offerTotal))})</strong></span>
-        <span>Offer total <strong>{money(offerTotal)}</strong></span>
+        <span>Offer total <strong>{money(offerTotal)}</strong></span><small>Unit rates round to the nearest ₹1 before totals. A rounded rate cannot exceed the enquiry snapshot price.</small>
       </div>
 
       <div className="offer-terms-form">
@@ -225,6 +239,7 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
         <label>Offer valid until<input type="date" value={expiresAt} onChange={(event) => setExpiresAt(event.target.value)} /></label>
       </div>
 
+      {enquiry.items.some(item=>!item.product_id) && <p className="manager-error" role="alert">This historical enquiry has unresolved catalogue identities. Its history is preserved, but a UUID-based offer cannot be created until the identities are reconciled.</p>}
       {error && <p className="manager-error" role="alert">{error}</p>}
       {message && <p className="category-manager-message" role="status">{message}</p>}
       <button className="category-manager-primary" type="button" disabled={busy || invalidPricing || !enquiry.items.length} onClick={() => void createOffer()}>
@@ -239,7 +254,7 @@ export function OfferManager({ enquiry }: { enquiry: EnquiryForOffer }) {
             return (
               <article className="offer-history-row" key={offer.offer_token}>
                 <div><strong>Version {offer.version}</strong><small>Created {new Date(offer.created_at).toLocaleString("en-IN")}{offer.expires_at ? ` · Valid until ${new Date(offer.expires_at).toLocaleDateString("en-IN")}` : ""}</small></div>
-                <span className="enquiry-status">Ready to share</span>
+                <span className="enquiry-status">{statusLabel(effectiveOfferStatus(offer.status,offer.expires_at))}</span>
                 <div className="offer-history-actions">
                   <a href={links.offerUrl} target="_blank" rel="noopener noreferrer">View link</a>
                   <a href={links.pdfUrl}>Download PDF</a>

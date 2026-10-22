@@ -1,0 +1,34 @@
+{
+  "backend/api/catalogue-admin.js": {
+    "baseline_sha256": "7cb2c0e82f396bdca23f59e74fe3fae433e0f410be9877c4ae8c517c0ad47759",
+    "development_sha256": "e6642c513a3d19f11517d4d8ac922bdaf0d34ce5b71f33922dd461aa12379e87"
+  },
+  "backend/api/catalogue-imports.js": {
+    "baseline_sha256": null,
+    "development_sha256": "a3bb8d368e385b8578fd6d8ef1a6a48a3afb4fdbd2777975fd842021c94e7073"
+  },
+  "backend/services/catalogue-products.js": {
+    "baseline_sha256": null,
+    "development_sha256": "c9e02312eee6c8b4d180e014186a41ad0351909ac8afe6b01491721544428e30"
+  },
+  "backend/services/catalogue-imports.js": {
+    "baseline_sha256": null,
+    "development_sha256": "e069179fed3946fbd32d30392b5e5a23db1ff7766cea86304f6932614065eb12"
+  },
+  "backend/services/catalogue-workbook.js": {
+    "baseline_sha256": null,
+    "development_sha256": "891fa05dce533f21d78230428217e55f59f4ced2995795924c23382e4e109651"
+  },
+  "backend/test/catalogue-imports.test.js": {
+    "baseline_sha256": null,
+    "development_sha256": "14b4f0fe936434154087fb759cd0827401f36e52ea3184d9860da87da0827aa1"
+  },
+  "frontend/app/admin/catalogue/CatalogueManager.tsx": {
+    "baseline_sha256": "d565750fe157d5ddc0ce9f26c2d81fcfd59a73b813f6f8d11557022037004602",
+    "development_sha256": "8e285c020cab05df60df5064d7973598f0c7d73be908509b898750cbe3733394"
+  },
+  "frontend/app/admin/catalogue/Import2C.tsx": {
+    "baseline_sha256": null,
+    "development_sha256": "a570201875000d48304313ed70e6987098110ce8569775db7534e11d0767a7af"
+  }
+}

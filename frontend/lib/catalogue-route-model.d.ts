@@ -1,0 +1,4 @@
+import type {CatalogueCategories,CatalogueList,CatalogueCategory,CatalogueClient} from './catalogue-types';
+export function homeState(categories:PromiseSettledResult<CatalogueCategories>,products:PromiseSettledResult<CatalogueList>):{categories:CatalogueCategory[];products:CatalogueList['products'];categoriesUnavailable:boolean;productsUnavailable:boolean};
+export function navLinks(nodes:CatalogueCategory[],helpers:{categoryHref(path:string):string},depth?:number):{id:string;name:string;href:string;depth:number}[];
+export function resolveAlias(value:string,preferCategory:boolean,client:Pick<CatalogueClient,'categories'|'bySku'>,helpers:{flattenCategories(tree:CatalogueCategory[]):CatalogueCategory[];categoryHref(path:string):string;productHref(sku:string):string}):Promise<{kind:'redirect';href:string}|{kind:'missing'}|{kind:'unavailable'}>;

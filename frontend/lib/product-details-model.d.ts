@@ -1,0 +1,11 @@
+import type {CatalogueProduct,CatalogueMedia,CatalogueCompatibility,CatalogueVerdict,CataloguePagination} from './catalogue-types';
+export type GalleryItem=CatalogueMedia&{alt:string;poster_url:string|null};
+export type VerdictDisplay={label:string;tone:'positive'|'negative'|'neutral'|'warning'};
+export function reasonText(code:string):string;
+export function statusInfo(status?:string):VerdictDisplay;
+export function fixtureMode(product:CatalogueProduct):'replaceable'|'integrated'|'hybrid'|'unknown';
+export function galleryItems(product:CatalogueProduct,helpers:{safeMediaUrl(value:unknown):string|null}):GalleryItem[];
+export function displayValue(value:unknown,unit?:string):string;
+export function specRows(product:CatalogueProduct):{rows:{key:string;label:string;value:string}[];integrated:{key:string;label:string;value:string}[]};
+export function compatibilityRows(data:CatalogueCompatibility,groupId:string,filter?:string):{groupId:string|null;rows:{product:CatalogueProduct;verdict:CatalogueVerdict|null;display:VerdictDisplay}[];evaluated:number;shown:number;total:number;page:number;pages:number;unconfigured:boolean;outOfRange:boolean};
+export function compatibilityPages(p:CataloguePagination):{previous:number|null;next:number|null;first:number|null};

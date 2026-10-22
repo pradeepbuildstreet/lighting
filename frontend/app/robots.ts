@@ -1,9 +1,5 @@
-import type { MetadataRoute } from "next";
-import { getAbsoluteUrl } from "@/lib/categories";
-
-export default function robots(): MetadataRoute.Robots {
-  return {
-    rules: { userAgent: "*", allow: "/", disallow: "/admin/" },
-    sitemap: getAbsoluteUrl("/sitemap.xml"),
-  };
-}
+import type {MetadataRoute} from 'next';
+import {deliveryRobots} from '@/lib/seo-delivery/server';
+export const dynamic='force-dynamic';
+export const runtime='nodejs';
+export default async function robots():Promise<MetadataRoute.Robots>{return deliveryRobots();}

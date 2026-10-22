@@ -1,0 +1,13 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {statusFromRow,visibilityByIds}=require('../services/catalogue-visibility');
+const ok={id:'11111111-1111-1111-1111-111111111111',active_ok:true,published_ok:true,review_ok:true,revision_ok:true,not_duplicate_ok:true,price_ok:true,duplicate_approval_ok:true,primary_category_ok:true,primary_image_ok:true,product_type_spec_ok:true,category_tree_ok:true,in_public_view:true};
+test('eligible published product is visible',()=>{const s=statusFromRow(ok);assert.equal(s.visible,true);assert.deepEqual(s.reasons,[]);});
+test('published but invalid duplicate approval is not visible',()=>{const s=statusFromRow({...ok,duplicate_approval_ok:false,in_public_view:false});assert.equal(s.published,true);assert.equal(s.visible,false);assert.equal(s.duplicate_approval_ok,false);assert.equal(s.reasons.length,1);assert.match(s.reasons[0],/Duplicate approval/);});
+test('null approval is a blocker',()=>assert.equal(statusFromRow({...ok,duplicate_approval_ok:null,in_public_view:false}).duplicate_approval_ok,false));
+test('all failed reasons returned',()=>{const s=statusFromRow({...ok,primary_image_ok:false,primary_category_ok:false,in_public_view:false});assert.equal(s.reasons.length,2);});
+test('unpublished product is not visible',()=>{const s=statusFromRow({...ok,published_ok:false,in_public_view:false});assert.equal(s.visible,false);assert.equal(s.published,false);assert.match(s.reasons[0],/Publication/);});
+test('inactive ancestor excludes product even if public view includes it',()=>{const s=statusFromRow({...ok,category_tree_ok:false});assert.equal(s.visible,false);assert.match(s.reasons[0],/hierarchy/);});
+test('database view remains authoritative',()=>{const s=statusFromRow({...ok,in_public_view:false});assert.equal(s.visible,false);assert.match(s.reasons[0],/database public-product view/);});
+test('zero ids skip query',async()=>{const m=await visibilityByIds({query:()=>{throw Error('unexpected query');}},[]);assert.equal(m.size,0);});
+test('batch uses a single parameterized read query',async()=>{const calls=[];const m=await visibilityByIds({query:async(sql,args)=>{calls.push({sql,args});return {rows:[ok]};}},[ok.id]);assert.equal(calls.length,1);assert.deepEqual(calls[0].args,[[ok.id]]);assert.match(calls[0].sql,/ANY\(\$1::uuid\[\]\)/);assert.equal(m.get(ok.id).visible,true);assert.doesNotMatch(calls[0].sql,/\b(INSERT|UPDATE|DELETE|ALTER)\b/i);});

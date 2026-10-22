@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { API_BASE_URL } from "@/lib/categories";
+import { API_BASE_URL } from "@/lib/api-base";
 
 export function AdminLoginForm() {
   const [email, setEmail] = useState("");

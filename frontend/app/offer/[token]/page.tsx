@@ -1,7 +1,8 @@
+import { WishlistMedia } from "@/components/WishlistMedia";
+import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { API_BASE_URL } from "@/lib/categories";
-import { getImageSrc } from "@/lib/image-url";
+import { API_BASE_URL } from "@/lib/api-base";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,10 @@ export const metadata: Metadata = {
 };
 
 type OfferItem = {
+  media?: import("@/lib/wishlist-product").WishlistMedia[];
+  product_id: string;
+  product_href?: string | null;
+  currency?: string;
   sku: string;
   name: string;
   quantity: number;
@@ -44,6 +49,7 @@ type Offer = {
 const money = (value: number) => new Intl.NumberFormat("en-IN", {
   style: "currency",
   currency: "INR",
+  minimumFractionDigits: Number.isInteger(value) ? 0 : 2,
   maximumFractionDigits: 2,
 }).format(value);
 
@@ -87,10 +93,10 @@ export default async function CustomerOfferPage({ params }: { params: { token: s
       <section className="customer-offer-items" aria-label="Offered products">
         <div className="customer-offer-table-head"><span>Product</span><span>Qty</span><span>List price</span><span>Discount</span><span>Offer price</span><span>Line total</span></div>
         {offer.items.map((item) => (
-          <article className="customer-offer-item" key={item.sku}>
+          <article className="customer-offer-item" key={item.product_id}>
             <div className="customer-offer-product">
-              <div className="customer-offer-image">{item.image_url && <img src={getImageSrc(item.image_url)} alt="" />}</div>
-              <div><strong>{item.name}</strong><small>SKU: {item.sku}</small></div>
+              <div className="customer-offer-image"><WishlistMedia item={item} /></div>
+              <div><strong>{item.name}</strong><small>SKU: {item.sku}</small>{<Link href={"/catalogue/product-id/"+item.product_id}>View current product</Link>}</div>
             </div>
             <span data-label="Qty">{item.quantity}</span>
             <span data-label="List price">{money(item.list_price)}</span>
@@ -113,7 +119,7 @@ export default async function CustomerOfferPage({ params }: { params: { token: s
           <dl>{terms.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>
         </section>
       )}
-      <p className="customer-offer-footnote">This offer is specific to the products and quantities listed above.</p>
+      <p className="customer-offer-footnote">This offer preserves the agreed prices for the products and quantities above. Current catalogue prices may differ. Missing or unsupported PDF thumbnails do not change quoted amounts.</p>
     </div>
   );
 }

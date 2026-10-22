@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { API_BASE_URL } from "@/lib/categories";
+import { API_BASE_URL } from "@/lib/api-base";
 
 type AdminUser = { id: string; email: string; is_active: boolean; created_at: string };
 

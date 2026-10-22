@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { API_BASE_URL } from "@/lib/categories";
+import { API_BASE_URL } from "@/lib/api-base";
 
 export function AdminSignOut() {
   const router = useRouter();

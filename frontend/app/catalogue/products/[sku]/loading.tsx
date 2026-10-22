@@ -1,0 +1,1 @@
+export default function Loading(){return <section className="container py-8" role="status"><h1 className="text-3xl font-bold">Loading product…</h1><p>Fetching current catalogue details.</p></section>;}
