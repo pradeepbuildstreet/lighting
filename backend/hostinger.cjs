@@ -1,6 +1,31 @@
 "use strict";
 
 const { start, stop } = require("./server.js");
+const { Client } = require("pg");
+const { loadConfig } = require("./config/runtime");
+
+const diagnosticConfig = loadConfig();
+
+const diagnosticClient = new Client({
+  connectionString: diagnosticConfig.databaseUrl,
+});
+
+console.log(
+  JSON.stringify({
+    event: "database_target",
+    host: diagnosticClient.host,
+    port: diagnosticClient.port,
+    database: diagnosticClient.database,
+    username: diagnosticClient.user,
+    passwordPresent:
+      typeof diagnosticClient.password === "string" &&
+      diagnosticClient.password.length > 0,
+    possibleDoubleEncoding:
+      /%25[0-9a-f]{2}/i.test(
+        new URL(diagnosticConfig.databaseUrl).password
+      ),
+  })
+);
 
 /*
  * Start unconditionally when Hostinger loads this entry.
