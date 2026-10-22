@@ -7,7 +7,7 @@ function loadConfig(env = process.env) {
     if (!Number.isInteger(value) || value < min || value > max) throw new Error(`Invalid ${key}`);
     return value;
   }
-  const databaseUrl = env.CATALOG_DATABASE_URL;
+  const databaseUrl = env.DATABASE_URL;
   if (!databaseUrl) throw new Error('DATABASE_URL is required');
   const db = new URL(databaseUrl);
   if (!['postgres:', 'postgresql:'].includes(db.protocol)) throw new Error('DATABASE_URL must be PostgreSQL');
