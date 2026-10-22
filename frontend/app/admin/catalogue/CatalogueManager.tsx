@@ -1,4 +1,4 @@
-"use client";
+"use client"; 
 import {useAdminNavigationGuard} from '@/lib/use-admin-navigation-guard';
 import uiStyles from './CatalogueUI.module.css';
 import ProductPreview from './ProductPreview';
