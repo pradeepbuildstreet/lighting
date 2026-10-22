@@ -1,26 +1,50 @@
 -- Luminoza fresh application database baseline; generated from the working schema.
 -- NO products, customers, collections, passwords or application users are exported as table data.
 -- Required technical version records only. Create the first administrator separately.
--- Requires PostgreSQL and psql major >= 18.
+-- Targeted revision for PostgreSQL 17 and Supabase extensions schema.
+-- Plain SQL: suitable for SQL Editor or psql. Static review only; restore test required.
 -- Do not replay historical migrations after this already-current baseline.
 BEGIN;
 SELECT pg_advisory_xact_lock(71420599);
 DO $$ BEGIN
- IF current_setting('server_version_num')::integer/10000 < 18 THEN
-  RAISE EXCEPTION 'Target PostgreSQL version is older than the generated baseline requires';
+ IF current_setting('server_version_num')::integer/10000 <> 17 THEN
+  RAISE EXCEPTION 'This baseline revision targets PostgreSQL 17; review separately for another major version';
  END IF;
  IF EXISTS(SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S','f')) THEN
   RAISE EXCEPTION 'Target public schema is not empty. Refusing migration; no existing app data will be replaced';
  END IF;
+ IF EXISTS (
+  SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+  WHERE n.nspname='public' AND NOT EXISTS (
+   SELECT 1 FROM pg_depend d
+   WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e'
+  )
+ ) THEN
+  RAISE EXCEPTION 'Target public schema contains non-extension functions; review before using a fresh baseline';
+ END IF;
 END $$;
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
+DO $$ BEGIN
+ IF NOT EXISTS (
+  SELECT 1 FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace
+  WHERE e.extname='pgcrypto' AND n.nspname='extensions'
+ ) OR NOT EXISTS (
+  SELECT 1 FROM pg_extension e JOIN pg_namespace n ON n.oid=e.extnamespace
+  WHERE e.extname='btree_gist' AND n.nspname='extensions'
+ ) THEN
+  RAISE EXCEPTION 'Expected pgcrypto and btree_gist in extensions; no extension relocation is attempted';
+ END IF;
+ IF to_regprocedure('extensions.digest(bytea,text)') IS NULL THEN
+  RAISE EXCEPTION 'extensions.digest(bytea,text) is unavailable';
+ END IF;
+END $$;
 
 --
 -- PostgreSQL database dump
 --
 
-\restrict 9CKAcoMJgrqZrRinoqVdW2i8nE15AC6c70sPy3CyiJ7iO4vnZA785KN6IhYZTqN
 
 -- Dumped from database version 18.6
 -- Dumped by pg_dump version 18.6
@@ -31,7 +55,7 @@ SET idle_in_transaction_session_timeout = 0;
 SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
+SET search_path = pg_catalog, public, extensions;
 SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
@@ -59,7 +83,7 @@ CREATE FUNCTION public.catalogue_corpus_digest(kind text) RETURNS text
     LANGUAGE sql STABLE
     SET search_path TO 'pg_catalog', 'public'
     AS $$
- SELECT encode(public.digest(convert_to('['||coalesce(string_agg(
+ SELECT encode(extensions.digest(convert_to('['||coalesce(string_agg(
  '['||to_json(p.id::text)::text||','||to_json(p.revision::text)::text||','||
  CASE WHEN p.is_active THEN 'true' ELSE 'false' END||']',',' ORDER BY p.id),'')||']','UTF8'),'sha256'),'hex')
  FROM public.products p WHERE p.product_kind=kind;
@@ -2023,7 +2047,6 @@ ALTER TABLE ONLY public.wishlist_offers
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 9CKAcoMJgrqZrRinoqVdW2i8nE15AC6c70sPy3CyiJ7iO4vnZA785KN6IhYZTqN
 
 
 -- Technical version seed, not business data.
@@ -2031,7 +2054,6 @@ ALTER TABLE ONLY public.wishlist_offers
 -- PostgreSQL database dump
 --
 
-\restrict AqWGbs2lqMOJ8WF67ZV4pnaWPfVnjg9Y5QIueVhveTWeziuEdjZolB7EoCtgqPJ
 
 -- Dumped from database version 18.6
 -- Dumped by pg_dump version 18.6
@@ -2042,7 +2064,7 @@ SET idle_in_transaction_session_timeout = 0;
 SET transaction_timeout = 0;
 SET client_encoding = 'UTF8';
 SET standard_conforming_strings = on;
-SELECT pg_catalog.set_config('search_path', '', false);
+SET search_path = pg_catalog, public, extensions;
 SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
@@ -2068,7 +2090,6 @@ INSERT INTO public.schema_versions (version, applied_at) VALUES (3, '2026-10-13 
 -- PostgreSQL database dump complete
 --
 
-\unrestrict AqWGbs2lqMOJ8WF67ZV4pnaWPfVnjg9Y5QIueVhveTWeziuEdjZolB7EoCtgqPJ
 
 
 SET search_path = public, extensions, pg_catalog;
@@ -2110,6 +2131,18 @@ SELECT collection_id,actor_id,action,before_state,after_state FROM public.homepa
 SELECT fixture_id,fingerprint,result,assessed_by FROM public.product_compatibility_assessments_v1 LIMIT 0;
 SELECT fixture_id,actor_id,fingerprint,result FROM public.product_compatibility_audit_v1 LIMIT 0;
 SELECT public.current_duplicate_approval(p.id,p.revision,p.approved_by,p.product_kind) FROM public.products p LIMIT 0;
+
+
+-- Execute the crypto-dependent application function after definitions are installed.
+-- An empty catalogue must hash the canonical empty-array corpus for each kind.
+DO $$ DECLARE expected text; BEGIN
+ expected := encode(extensions.digest(convert_to('[]','UTF8'),'sha256'),'hex');
+ IF public.catalogue_corpus_digest('fixture') IS DISTINCT FROM expected
+    OR public.catalogue_corpus_digest('light') IS DISTINCT FROM expected THEN
+  RAISE EXCEPTION 'Catalogue digest self-test failed on the fresh empty catalogue';
+ END IF;
+END $$;
+SET check_function_bodies = true;
 
 -- This application uses server-side PostgreSQL connections, not browser Data API access.
 -- The target public schema was required to be empty before this baseline.
