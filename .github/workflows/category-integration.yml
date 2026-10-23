@@ -1,0 +1,57 @@
+name: Category integration checks
+on:
+  push:
+    branches: [feature/category-navigation-stages]
+  pull_request:
+    branches: [main, release]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+      AUTH_SECRET: ci-only-not-a-production-secret-0000000000000000
+      SITE_URL: https://www.luminoza.in
+      PUBLIC_CATALOGUE_ENABLED: 'false'
+      INTERNAL_API_ORIGIN: http://127.0.0.1:3000
+      NEXT_PUBLIC_SITE_URL: https://www.luminoza.in
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure temporary media storage for CI
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/luminoza-media"
+          echo "MEDIA_STORAGE_ROOT=$RUNNER_TEMP/luminoza-media" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix frontend
+      - name: Run backend tests
+        shell: bash
+        run: |
+          shopt -s nullglob
+          test_files=(backend/test/*.test.js backend/test/*.test.mjs backend/test/*.test.cjs)
+          if (( ${#test_files[@]} == 0 )); then
+            echo "No backend test files found" >&2
+            exit 1
+          fi
+          node --test "${test_files[@]}"
+      - name: Run frontend tests
+        shell: bash
+        run: |
+          shopt -s nullglob
+          test_files=(frontend/test/*.test.js frontend/test/*.test.mjs frontend/test/*.test.cjs)
+          if (( ${#test_files[@]} == 0 )); then
+            echo "No frontend test files found" >&2
+            exit 1
+          fi
+          node --test "${test_files[@]}"
+      - run: npm run build --prefix frontend
