@@ -1,6 +1,6 @@
 "use strict";
 const path=require('node:path'),fs=require('node:fs/promises');
-function enabled(env){if(env.PUBLIC_CATALOGUE_ENABLED!=='true')return false;try{const u=new URL(env.CATALOG_DATABASE_URL);return ['postgres:','postgresql:'].includes(u.protocol)&&['localhost','127.0.0.1','[::1]'].includes(u.hostname);}catch(_){return false;}}
+function enabled(env){if(env.PUBLIC_CATALOGUE_ENABLED!=='true')return false;try{const u=new URL(env.DATABASE_URL);return ['postgres:','postgresql:'].includes(u.protocol)&&['localhost','127.0.0.1','[::1]'].includes(u.hostname);}catch(_){return false;}}
 function createRouter(express,db,rateLimit){
  const router=express.Router(),service=require('../services/public-catalogue-v1').createService(db),root=path.resolve(__dirname,'../storage/catalogue');
  router.use((req,res,next)=>{res.set({'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow','X-Content-Type-Options':'nosniff'});if(!enabled(process.env))return res.status(404).json({error:'Not found'});if(!['GET','HEAD'].includes(req.method))return res.status(405).set('Allow','GET, HEAD').json({error:'Method not allowed'});next();});
