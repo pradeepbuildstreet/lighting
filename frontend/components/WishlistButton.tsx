@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Heart, LoaderCircle } from "lucide-react";
+import { Heart } from "lucide-react";
 import { useWishlist } from "@/components/WishlistProvider";
 
 export function WishlistButton({
@@ -17,24 +17,21 @@ export function WishlistButton({
   wishlistCount?: number;
   compact?: boolean;
 }) {
-  const { wishlist, loading, addProduct, removeProduct } = useWishlist();
-  const [busy, setBusy] = useState(false);
+  const { wishlist, loading, isProductSelected, isSelectionPending, setProductSelected } = useWishlist();
   const [error, setError] = useState("");
-  const item = wishlist?.items.find((wishlistItem) => !!productId && wishlistItem.product_id === productId);
+  const selected = !!productId && isProductSelected(productId);
+  const busy = !!productId && isSelectionPending(productId);
   const startsNewWishlist = !!wishlist && wishlist.status !== "draft";
 
   const handleToggle = async () => {
-    setBusy(true);
+    if (!productId || loading) return;
     setError("");
     try {
-      if (item && !startsNewWishlist) await removeProduct(productId!);
-      else await addProduct(productId!);
+      await setProductSelected(productId, !isProductSelected(productId));
     } catch (caught) {
       setError(caught instanceof Error && caught.name === "AbortError"
-        ? "The request timed out. Check your connection and try again."
-        : caught instanceof Error ? caught.message : "Could not update wishlist.");
-    } finally {
-      setBusy(false);
+        ? "The save timed out. Reload the page to check saved selections before submitting."
+        : caught instanceof Error ? caught.message : "Could not update wishlist. Reload to check saved selections.");
     }
   };
 
@@ -42,16 +39,15 @@ export function WishlistButton({
     <span className={`wishlist-button-wrap ${compact ? "is-compact" : ""}`}>
       <button
         type="button"
-        className={`wishlist-add-button ${item ? "is-added" : ""}`}
+        className={`wishlist-add-button ${selected ? "is-added" : ""}`}
         aria-busy={busy}
-        aria-label={startsNewWishlist ? `Start a new wishlist and add ${name}` : item ? `Remove ${name} from wishlist` : `Add ${name} to wishlist`}
-        title={!productId ? "Open the current catalogue product to add it to your wishlist" : startsNewWishlist ? "Start a new wishlist" : item ? "Remove from wishlist" : "Add to wishlist"}
-        disabled={loading || busy || !productId}
+        aria-pressed={selected}
+        aria-label={selected ? `Remove ${name} from wishlist` : startsNewWishlist ? `Start a new wishlist and add ${name}` : `Add ${name} to wishlist`}
+        title={!productId ? "Open the current catalogue product to add it to your wishlist" : busy ? "Saving selection; click again to change it" : selected ? "Remove from wishlist" : startsNewWishlist ? "Start a new wishlist" : "Add to wishlist"}
+        disabled={loading || !productId}
         onClick={() => void handleToggle()}
       >
-        {busy
-          ? <LoaderCircle className="wishlist-loader-icon" size={compact ? 19 : 20} aria-hidden="true" />
-          : <Heart size={compact ? 19 : 20} fill={item ? "currentColor" : "none"} aria-hidden="true" />}
+        <Heart size={compact ? 19 : 20} fill={selected ? "currentColor" : "none"} aria-hidden="true" />
       </button>
       {typeof wishlistCount === "number" && (<span className="wishlist-popularity" aria-label={`Wishlisted ${wishlistCount} times by all customers`}>
         {wishlistCount} wishlisted

@@ -2,9 +2,8 @@
 
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { API_BASE_URL } from "@/lib/api-base";
-
 import { createWishlistQueue } from "@/lib/wishlist-quantity.mjs";
-
+import { createWishlistSelection, type WishlistSelection } from "@/lib/wishlist-selection.mjs";
 import type { WishlistMedia } from "@/lib/wishlist-product";
 
 export type WishlistItem = {
@@ -42,6 +41,9 @@ type WishlistContextValue = {
   sessionId: string | null;
   loading: boolean;
   pendingMutations: number;
+  isProductSelected: (productId: string) => boolean;
+  isSelectionPending: (productId: string) => boolean;
+  setProductSelected: (productId: string, selected: boolean) => Promise<void>;
   updateQuantity: (productId: string, quantity: number) => Promise<Wishlist>;
   addProduct: (productId: string) => Promise<Wishlist>;
   removeProduct: (productId: string) => Promise<void>;
@@ -78,10 +80,34 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
   const [wishlist, setWishlist] = useState<Wishlist | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingMutations, setPendingMutations] = useState(0);
+  const [, setSelectionVersion] = useState(0);
   const activeSession = useRef<string | null>(null);
   const currentWishlist = useRef<Wishlist | null>(null);
   const queue = useRef(createWishlistQueue());
   const failedQuantities = useRef(new Set<string>());
+  const failedSelections = useRef(new Set<string>());
+  const selection = useRef<WishlistSelection | null>(null);
+  if (!selection.current) selection.current = createWishlistSelection({
+    read: id => currentWishlist.current?.status === "draft" && !!currentWishlist.current.items.some(item => item.product_id === id),
+    run: work => mutate(work),
+    changed: () => setSelectionVersion(version => version + 1),
+    prepare: async id => {
+      requireSession();
+      if (failedSelections.current.has(id)) throw new Error("Wishlist selection is unconfirmed. Reload the page to check saved selections before retrying or submitting.");
+    },
+    write: async (id, selected) => {
+      try {
+        if (selected) await persistAdd(id); else await persistRemove(id);
+      } catch (error) {
+        failedSelections.current.add(id);
+        try {
+          const data = await responseData(await fetchWishlist(`${API_BASE_URL}/wishlists/session`, { headers: { "x-wishlist-session": requireSession() } }));
+          remember(data.wishlist);
+        } catch (_) {}
+        throw error;
+      }
+    },
+  });
   function remember(next: Wishlist | null) { currentWishlist.current = next; setWishlist(next); }
   function mutate<T,>(work: () => Promise<T>): Promise<T> {
     setPendingMutations(count => count + 1);
@@ -108,7 +134,7 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
     return () => { active = false; };
   }, []);
 
-  const addProduct = (productId: string) => mutate(async () => {
+  async function persistAdd(productId: string): Promise<Wishlist> {
     let activeSessionId = requireSession();
     if (currentWishlist.current && currentWishlist.current.status !== "draft") {
       activeSessionId = window.crypto.randomUUID();
@@ -125,7 +151,8 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
     }));
     remember(data.wishlist);
     return data.wishlist as Wishlist;
-  });
+  }
+  const addProduct = (productId: string) => mutate(() => persistAdd(productId));
   const updateQuantity = (productId: string, quantity: number) => mutate(async () => {
     try {
       const data = await responseData(await fetchWishlist(
@@ -140,15 +167,17 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
       return data.wishlist as Wishlist;
     } catch (error) { failedQuantities.current.add(productId); throw error; }
   });
-  const removeProduct = (productId: string) => mutate(async () => {
+  async function persistRemove(productId: string): Promise<void> {
     const data = await responseData(await fetchWishlist(
       `${API_BASE_URL}/wishlists/session/items/${encodeURIComponent(productId)}`,
       { method: "DELETE", headers: { "x-wishlist-session": requireSession() } }
     ));
     failedQuantities.current.delete(productId);
     remember(data.wishlist);
-  });
+  }
+  const removeProduct = (productId: string) => mutate(() => persistRemove(productId));
   const submitEnquiry: WishlistContextValue["submitEnquiry"] = (details) => mutate(async () => {
+    if (failedSelections.current.size) throw new Error("Reload the page to verify unconfirmed wishlist selections before submitting the enquiry.");
     if (failedQuantities.current.size) throw new Error("Retry failed quantity changes before submitting the enquiry.");
     const data = await responseData(await fetchWishlist(`${API_BASE_URL}/wishlists/session/submit`, {
       method: "POST",
@@ -160,7 +189,11 @@ export function WishlistProvider({ children }: { children: React.ReactNode }) {
   });
 
   return (
-    <WishlistContext.Provider value={{ wishlist, sessionId, loading, pendingMutations, addProduct, updateQuantity, removeProduct, submitEnquiry }}>
+    <WishlistContext.Provider value={{ wishlist, sessionId, loading, pendingMutations,
+      isProductSelected: id => selection.current!.selected(id),
+      isSelectionPending: id => selection.current!.pending(id),
+      setProductSelected: (id, selected) => selection.current!.set(id, selected),
+      addProduct, updateQuantity, removeProduct, submitEnquiry }}>
       {children}
     </WishlistContext.Provider>
   );
