@@ -231,7 +231,7 @@ async function offerMediaFile(token, id) {
   }
 
   const root = await fs.realpath(
-    path.resolve(__dirname, "../storage/catalogue")
+    require("../services/media-storage").getMediaRoot()
   );
 
   const file = await fs.realpath(
