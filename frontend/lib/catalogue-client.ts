@@ -1,10 +1,17 @@
 import {getApiBaseUrl} from './api-base';
 import {createClient} from './catalogue-core';
 import {visibleCategoryTree} from './catalogue-category-visibility.mjs';
-import type {CatalogueClient} from './catalogue-types';
+import {createInflightLoader} from './catalogue-performance.mjs';
+import type {CatalogueClient,CatalogueCategories,RequestOptions} from './catalogue-types';
 export {CatalogueError,buildListQuery,productHref,categoryHref,pageHref,resolveCategoryPath,flattenCategories,formatPrice,safeMediaUrl} from './catalogue-core';
 export type * from './catalogue-types';
+const browserCategoryLoaders=new Map<string,(options?:RequestOptions)=>Promise<CatalogueCategories>>();
 export function getCatalogueClient(timeoutMs=15000):CatalogueClient {
-  const client=createClient({base:getApiBaseUrl(),fetchImpl:(input,init)=>fetch(input,init),timeoutMs});
-  return {...client,categories:options=>client.categories(options).then(result=>({...result,categories:visibleCategoryTree(result.categories)}))};
+ const base=getApiBaseUrl();
+ const client=createClient({base,fetchImpl:(input,init)=>fetch(input,init),timeoutMs});
+ const categories=(options?:RequestOptions)=>client.categories(options).then(result=>({...result,categories:visibleCategoryTree(result.categories)}));
+ if(typeof window==='undefined')return {...client,categories};
+ const key=base+'|'+timeoutMs;let shared=browserCategoryLoaders.get(key);
+ if(!shared){shared=createInflightLoader(categories);browserCategoryLoaders.set(key,shared);}
+ return {...client,categories:shared};
 }
