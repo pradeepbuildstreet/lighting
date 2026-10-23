@@ -11,5 +11,5 @@ test('production requires secret',()=>assert.throws(()=>loadConfig({...env,NODE_
 test('production https',()=>assert.throws(()=>loadConfig({...env,NODE_ENV:'production',SITE_URL:'http://luminoza.in',AUTH_SECRET:'x'.repeat(40)}),/scheme/));
 test('explicit production configuration',()=>assert.equal(loadConfig({...env,NODE_ENV:'production',SITE_URL:'https://luminoza.in',AUTH_SECRET:'x'.repeat(40),TRUST_PROXY:'loopback'}).siteOrigin,'https://luminoza.in'));
 
-test('obsolete setting is not a fallback',()=>assert.throws(()=>loadConfig({['DATABASE'+'_URL']:'postgresql://x:y@localhost/db'}),/DATABASE_URL/));
-test('only catalogue setting is read',()=>assert.equal(loadConfig({...env,['DATABASE'+'_URL']:'https://invalid.example'}).databaseUrl,env.DATABASE_URL));
+test('legacy setting is not a fallback',()=>assert.throws(()=>loadConfig({CATALOG_DATABASE_URL:'postgresql://x:y@localhost/db'}),/DATABASE_URL/));
+test('authoritative setting wins over legacy',()=>assert.equal(loadConfig({...env,CATALOG_DATABASE_URL:'https://invalid.example'}).databaseUrl,env.DATABASE_URL));
