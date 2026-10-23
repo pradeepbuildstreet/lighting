@@ -1,6 +1,7 @@
 "use strict";
 const {attachCompatibilityVisibilityWarnings}=require('../services/compatibility-visibility-warnings');
 const express=require('express');const db=require('../db/catalogue');const V=require('../validators/catalogue');
+const categoryPolicy=require('../services/category-policy');
 const {requireAdmin}=require('../middleware/require-admin');
 const products=require('../services/catalogue-products').createProductService(db);
 const {audit,detail,writeProduct}=products;
@@ -18,19 +19,21 @@ const route=fn=>async(req,res)=>{try{await fn(req,res);}catch(e){
 router.get('/state',route(async(_req,res)=>{
  const result=await db.query('SELECT version FROM schema_versions ORDER BY version DESC LIMIT 1');
  if(result.rows[0]?.version!==3){const e=new Error('Catalogue schema version 3 required');e.status=503;throw e;}
+ await db.query('SELECT allow_direct_products FROM categories LIMIT 0');
  res.json({ready:true,schema_version:3,mode:'catalogue_review',publication_enabled:true});
 }));
 const masters={
  'fixture-types':{table:'fixture_types',fields:['code','name','is_active']},
  'light-types':{table:'light_types',fields:['code','name','base_type','technology','is_active']},
  'dealers':{table:'dealers',fields:['dealer_code','name','contact_person','phone','email','gstin','address','is_active']},
- 'categories':{table:'categories',fields:['slug','name','parent_id','description','sort_order','is_active']}
+ 'categories':{table:'categories',fields:['slug','name','parent_id','description','sort_order','is_active','allow_direct_products']}
 };
-function masterData(key,b){
+function masterData(key,b,old={}){
  const m=masters[key],d={name:V.text(b.name,'Name',true,255),is_active:V.bool(b.is_active,true)};
  if(key==='categories'){
   d.slug=V.text(b.slug,'Slug',true,100);if(!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(d.slug))V.fail('Invalid category slug');
   d.parent_id=b.parent_id?V.uuid(b.parent_id,'parent category'):null;d.description=V.text(b.description,'Description',false,5000);d.sort_order=V.num(b.sort_order??0,'Sort order',{integer:true});
+  d.allow_direct_products=categoryPolicy.directProducts(b.allow_direct_products,old.allow_direct_products??true);
  }else{
   const code=key==='dealers'?'dealer_code':'code';d[code]=V.text(b[code],code,true,100);if(!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(d[code]))V.fail('Invalid code');
   if(key==='light-types')for(const f of ['base_type','technology'])d[f]=V.text(b[f],f);
@@ -52,11 +55,13 @@ for(const [key,m] of Object.entries(masters)){
   });res.status(201).json({item});
  }));
  router.put('/'+key+'/:id',route(async(req,res)=>{
-  const id=V.uuid(req.params.id),values=masterData(key,req.body);
+  const id=V.uuid(req.params.id);
   const item=await db.transaction(async c=>{
    await db.actor(c,req.admin);if(key==='categories')await c.query('SELECT pg_advisory_xact_lock(8102401)');
    const old=(await c.query(`SELECT * FROM ${m.table} WHERE id=$1 FOR UPDATE`,[id])).rows[0];
    if(!old){const e=new Error('Record not found');e.status=404;throw e;}
+   const values=masterData(key,req.body,old);
+   if(key==='categories')await categoryPolicy.validateDirectSetting(c,id,values[m.fields.indexOf('allow_direct_products')]);
    const codeField=key==='categories'?'slug':key==='dealers'?'dealer_code':'code';
    if(key!=='categories'&&old[codeField]!==req.body[codeField])V.fail('Codes are immutable; create a new type/dealer instead');
    const row=(await c.query(`UPDATE ${m.table} SET ${m.fields.map((f,i)=>f+'=$'+(i+2)).join(',')} WHERE id=$1 RETURNING *`,[id,...values])).rows[0];

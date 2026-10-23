@@ -1,5 +1,6 @@
 "use strict";
 const V=require("../validators/catalogue");
+const categoryPolicy=require('./category-policy');
 function createProductService(db){
 async function audit(c,actor,entity,id,action,before,after){await c.query('INSERT INTO admin_audit_log(actor_id,action,entity_type,entity_id,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6)',[actor.id,action,entity,id,before||null,after||null]);}
 async function detail(c,id){
@@ -11,7 +12,7 @@ async function detail(c,id){
  return {...p,specs,category_ids:categories.map(x=>x.category_id),primary_category_id:categories.find(x=>x.is_primary)?.category_id||null};
 }
 async function writeProduct(c,actor,id,data,revision){
- await db.actor(c,actor);let before=null;
+ await db.actor(c,actor);await categoryPolicy.validateAssignments(c,data.categories);let before=null;
  if(id){
   const locked=(await c.query('SELECT * FROM products WHERE id=$1 FOR UPDATE',[id])).rows[0];
   if(!locked){const e=new Error('Product not found');e.status=404;throw e;}
@@ -33,7 +34,6 @@ async function writeProduct(c,actor,id,data,revision){
  if(!(await c.query(`SELECT id FROM ${type} WHERE id=$1 AND is_active=true`,[typeId])).rows.length)V.fail('Active fixture/light type required');
  const table=data.product_kind==='fixture'?'fixture_specs':'light_specs';const specFields=Object.keys(data.spec);
  await c.query(`INSERT INTO ${table}(product_id,${specFields.join(',')}) VALUES($1,${specFields.map((_,i)=>'$'+(i+2)).join(',')}) ON CONFLICT(product_id) DO UPDATE SET ${specFields.map(f=>f+'=EXCLUDED.'+f).join(',')}`,[id,...specFields.map(f=>data.spec[f])]);
- if(data.categories.length){const active=await c.query('SELECT id FROM categories WHERE id=ANY($1::uuid[]) AND is_active=true',[data.categories]);if(active.rows.length!==data.categories.length)V.fail('All assigned categories must be active');}
  await c.query('DELETE FROM product_categories WHERE product_id=$1',[id]);
  for(const category of data.categories)await c.query('INSERT INTO product_categories(product_id,category_id,is_primary) VALUES($1,$2,$3)',[id,category,category===data.primary]);
  const after=await detail(c,id);await audit(c,actor,'products',id,before?'update':'create',before,after);return after;
