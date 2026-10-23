@@ -1,0 +1,16 @@
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const {parseTrustProxy} = require('../config/runtime');
+const {enabled} = require('../api/public-catalogue-v1');
+const env={DATABASE_URL:'postgresql://user:pass@db.example.supabase.co/postgres',NODE_ENV:'production',SITE_URL:'https://luminoza.in',AUTH_SECRET:'x'.repeat(40),PUBLIC_CATALOGUE_ENABLED:'true'};
+test('public gate accepts valid production runtime',()=>assert.equal(enabled(env),true));
+test('feature flag remains mandatory',()=>assert.equal(enabled({...env,PUBLIC_CATALOGUE_ENABLED:'false'}),false));
+test('legacy localhost setting cannot activate public gate',()=>{const x={...env,CATALOG_DATABASE_URL:'postgresql://u:p@localhost/db'};delete x.DATABASE_URL;assert.equal(enabled(x),false);});
+test('gate fails closed for invalid runtime',()=>assert.equal(enabled({...env,AUTH_SECRET:''}),false));
+test('authoritative URL ignores a conflicting legacy URL',()=>assert.equal(enabled({...env,CATALOG_DATABASE_URL:'https://invalid.example'}),true));
+for(const value of ['false','FALSE',' False ','  false  ',''])test('proxy false '+JSON.stringify(value),()=>assert.equal(parseTrustProxy(value),false));
+for(const value of ['true','TRUE',' True '])test('blanket trust rejected '+JSON.stringify(value),()=>assert.throws(()=>parseTrustProxy(value),/trust all/));
+for(const value of ['1',' 2 ','0'])test('proxy numeric '+JSON.stringify(value),()=>assert.equal(parseTrustProxy(value),Number(value)));
+for(const value of ['loopback',' LOOPBACK ','linklocal','uniquelocal'])test('proxy range '+JSON.stringify(value),()=>assert.equal(parseTrustProxy(value),value.trim().toLowerCase()));
+for(const value of ['127.0.0.1','::1','10.0.0.0/8','2001:db8::/32','loopback, 10.0.0.0/8'])test('valid proxy '+value,()=>assert.equal(typeof parseTrustProxy(value),'string'));
+for(const value of ['garbage','-1','1.5','10.0.0.0/33','::1/129','loopback,','false,loopback','999999999999999999999'])test('invalid proxy '+value,()=>assert.throws(()=>parseTrustProxy(value),/TRUST_PROXY/));

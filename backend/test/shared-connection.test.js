@@ -10,6 +10,6 @@ test('commit failure rolls back and releases',async()=>{const f=fixture({commitF
 test('shutdown idempotent',async()=>{const f=fixture();await f.db.query('SELECT 1');await Promise.all([f.db.close(),f.db.pool.end()]);assert.equal(f.counts().ends,1);await assert.rejects(f.db.query('SELECT 1'),/shutting down/);});
 test('unused shutdown allocates no pool',async()=>{const f=fixture();await f.db.close();assert.equal(f.options.length,0);});
 test('compatibility modules share methods',()=>{const f=fixture();function load(n){const module={exports:{}};vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../db',n),'utf8'),{module,require:n=>n==='./connection'?f.db:require('../services/admin-actor')});return module.exports;}const a=load('database.js'),c=load('catalogue.js');assert.equal(a.query,c.query);assert.equal(a.withTransaction,c.transaction);assert.equal(a.pool.end,c.close);});
-test('obsolete setting alone rejected',()=>assert.throws(()=>loadConfig({['DATABASE'+'_URL']:'postgresql://x:y@localhost/db'}),/DATABASE_URL/));
+test('legacy setting alone rejected',()=>assert.throws(()=>loadConfig({CATALOG_DATABASE_URL:'postgresql://x:y@localhost/db'}),/DATABASE_URL/));
 test('invalid protocol rejected',()=>assert.throws(()=>loadConfig({DATABASE_URL:'https://example.com'}),/PostgreSQL/));
 test('no implicit identity writes',async()=>{const f=fixture();await f.db.query('SELECT 1');assert.equal(f.calls.length,1);assert.equal(f.calls[0][0],'SELECT 1');});
