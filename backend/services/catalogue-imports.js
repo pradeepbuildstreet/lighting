@@ -1,10 +1,11 @@
 "use strict";
 const crypto=require('node:crypto'),V=require('../validators/catalogue');
+const {checkCategoryRows}=require('./category-policy');
 function problem(status,message){const e=new Error(message);e.status=status;throw e;}
 function createImports(db,products,parseWorkbook){
  async function preview(actor,buffer,mode='create'){
   if(!['create','update','upsert'].includes(mode))V.fail('Invalid import mode');
-  const [f,l,categories]=await Promise.all([db.query('SELECT id,code,is_active FROM fixture_types'),db.query('SELECT id,code,is_active FROM light_types'),db.query('SELECT id,slug,is_active FROM categories')]);
+  const [f,l,categories]=await Promise.all([db.query('SELECT id,code,is_active FROM fixture_types'),db.query('SELECT id,code,is_active FROM light_types'),db.query('SELECT id,slug,name,is_active,allow_direct_products FROM categories')]);
   const parsed=await parseWorkbook(buffer,{fixtures:f.rows,lights:l.rows,categories:categories.rows});
   if(!parsed.length||parsed.length>1000)V.fail('Invalid row count');
   const counts=new Map();for(const r of parsed)if(r.payload)counts.set(r.payload.sku,(counts.get(r.payload.sku)||0)+1);
@@ -13,7 +14,7 @@ function createImports(db,products,parseWorkbook){
    for(const r of parsed){
     const errors=[...r.errors];let action='error',staged={},key=r.payload?.sku||null;
     if(!errors.length)try{
-     V.product(r.payload);if(counts.get(key)>1)V.fail('SKU repeats in workbook');
+     const validated=V.product(r.payload);checkCategoryRows(validated.categories,categories.rows);if(counts.get(key)>1)V.fail('SKU repeats in workbook');
      const old=(await c.query('SELECT id,revision,product_kind FROM products WHERE sku=$1',[key])).rows[0];
      if(old&&mode==='create')V.fail('SKU already exists');if(!old&&mode==='update')V.fail('SKU does not exist');if(old&&old.product_kind!==r.payload.product_kind)V.fail('Cannot change product kind');
      action=old?'update':'insert';staged={payload:r.payload,product_id:old?.id||null,expected_revision:old?.revision||null};

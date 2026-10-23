@@ -1,0 +1,35 @@
+name: Category integration checks
+on:
+  push:
+    branches: [feature/category-navigation-stages]
+  pull_request:
+    branches: [main, release]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: postgresql://ci:ci@127.0.0.1:5432/ci
+      AUTH_SECRET: ci-only-not-a-production-secret-0000000000000000
+      SITE_URL: https://www.luminoza.in
+      PUBLIC_CATALOGUE_ENABLED: 'false'
+      MEDIA_STORAGE_ROOT: ${{ runner.temp }}/luminoza-media
+      INTERNAL_API_ORIGIN: http://127.0.0.1:3000
+      NEXT_PUBLIC_SITE_URL: https://www.luminoza.in
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix frontend
+      - run: node --test backend/test
+      - run: node --test frontend/test
+      - run: npm run build --prefix frontend
