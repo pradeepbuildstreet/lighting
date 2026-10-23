@@ -1,0 +1,13 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {visibleCategoryTree} from '../lib/catalogue-category-visibility.mjs';
+const category=(id,count,children=[])=>({id,name:id,path:id,product_count:count,children});
+test('empty category is hidden',()=>assert.deepEqual(visibleCategoryTree([category('empty',0)]),[]));
+test('populated direct category is retained',()=>assert.equal(visibleCategoryTree([category('full',1)])[0].id,'full'));
+test('empty descendants are removed',()=>assert.deepEqual(visibleCategoryTree([category('parent',1,[category('empty',0)])])[0].children,[]));
+test('populated descendant retains its ancestor',()=>assert.equal(visibleCategoryTree([category('parent',0,[category('child',1)])]).length,1));
+test('empty subtree is hidden',()=>assert.deepEqual(visibleCategoryTree([category('parent',0,[category('child',0)])]),[]));
+test('distinct rollup count is preserved not summed',()=>assert.equal(visibleCategoryTree([category('parent',1,[category('a',1),category('b',1)])])[0].product_count,1));
+test('source response is not mutated',()=>{const tree=[category('parent',1,[category('empty',0)])];visibleCategoryTree(tree);assert.equal(tree[0].children.length,1);});
+test('ten populated categories retain their order',()=>{const tree=Array.from({length:10},(_,i)=>category(String(i),1));assert.deepEqual(visibleCategoryTree(tree).map(c=>c.id),tree.map(c=>c.id));});
+test('empty input remains valid',()=>assert.deepEqual(visibleCategoryTree([]),[]));

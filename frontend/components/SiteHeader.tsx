@@ -6,6 +6,7 @@ import { ChevronDown, Heart, Menu, Search, X } from "lucide-react";
 import {getCatalogueClient,categoryHref as getCategoryHrefFromPath} from '@/lib/catalogue-client';
 import type {CatalogueCategory as CategoryNode} from '@/lib/catalogue-types';
 import {navLinks} from '@/lib/catalogue-route-model';
+import styles from './SiteHeader.module.css';
 const getCategoryHref=(category:CategoryNode)=>getCategoryHrefFromPath(category.path);
 import { useWishlist } from "@/components/WishlistProvider";
 
@@ -50,7 +51,7 @@ export function SiteHeader() {
   },[navigationAttempt]);
 
   return (
-    <header className="site-header">
+    <header className={`site-header ${styles.header}`}>
       <div className="container">
         <div className="site-header-main">
           <Link prefetch={false} href="/" className="site-brand" aria-label="Luminoza home">
@@ -60,14 +61,13 @@ export function SiteHeader() {
             </span>
           </Link>
 
-          <nav className="site-nav site-nav-desktop" aria-label="Shop by department">
-            <Link prefetch={false} href="/products">All products</Link>
+          <nav className="site-nav site-nav-desktop" aria-label="Shop by department" onMouseLeave={() => setOpenDesktopCategory(null)}>
+            <Link prefetch={false} href="/products" onMouseEnter={() => setOpenDesktopCategory(null)} onFocus={() => setOpenDesktopCategory(null)}>All products</Link>
             {categories.map((category) => (
               <div
                 className={`site-nav-item ${openDesktopCategory === category.id ? "is-open" : ""}`}
                 key={category.id}
                 onMouseEnter={() => setOpenDesktopCategory(category.id)}
-                onMouseLeave={() => setOpenDesktopCategory(null)}
                 onFocusCapture={() => setOpenDesktopCategory(category.id)}
                 onBlurCapture={(event) => {
                   const nextTarget = event.relatedTarget;
