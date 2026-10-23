@@ -16,11 +16,15 @@ jobs:
       AUTH_SECRET: ci-only-not-a-production-secret-0000000000000000
       SITE_URL: https://www.luminoza.in
       PUBLIC_CATALOGUE_ENABLED: 'false'
-      MEDIA_STORAGE_ROOT: ${{ runner.temp }}/luminoza-media
       INTERNAL_API_ORIGIN: http://127.0.0.1:3000
       NEXT_PUBLIC_SITE_URL: https://www.luminoza.in
     steps:
       - uses: actions/checkout@v4
+      - name: Configure temporary media storage for CI
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/luminoza-media"
+          echo "MEDIA_STORAGE_ROOT=$RUNNER_TEMP/luminoza-media" >> "$GITHUB_ENV"
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
