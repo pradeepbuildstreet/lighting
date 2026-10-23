@@ -1,0 +1,13 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {categoryAssignable,categoryAssignmentError} from '../lib/admin-category-policy.mjs';
+const row={id:'a',name:'A',is_active:true,allow_direct_products:true};
+test('active direct category allowed',()=>assert.equal(categoryAssignable(row),true));
+test('group only blocked',()=>assert.equal(categoryAssignable({...row,allow_direct_products:false}),false));
+test('inactive blocked',()=>assert.equal(categoryAssignable({...row,is_active:false}),false));
+test('missing policy fails closed',()=>assert.equal(categoryAssignable({is_active:true}),false));
+test('draft without categories allowed',()=>assert.equal(categoryAssignmentError([],null,[]),''));
+test('valid selection allowed',()=>assert.equal(categoryAssignmentError(['a'],'a',[row]),''));
+test('existing invalid assignment needs repair',()=>assert.match(categoryAssignmentError(['a'],'a',[{...row,allow_direct_products:false}]),/Remove or replace/));
+test('missing category needs repair',()=>assert.match(categoryAssignmentError(['missing'],null,[]),/missing/));
+test('unassigned primary rejected',()=>assert.match(categoryAssignmentError([],'a',[row]),/Primary/));
+test('duplicate assignment rejected',()=>assert.match(categoryAssignmentError(['a','a'],null,[row]),/unique/));
