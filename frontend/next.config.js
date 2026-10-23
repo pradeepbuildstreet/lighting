@@ -21,7 +21,5 @@ module.exports = {
   distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
   env: {NEXT_PUBLIC_SITE_URL:site.origin},
   images: {remotePatterns:imageHosts.map(hostname=>({protocol:'https',hostname}))},
-  async rewrites() { return [
-    {source:'/api/:path*',destination:`${backend.origin}/api/:path*`}
-  ]; }
+  // /api/* is handled by app/api/[...path]/route.ts; local API routes take precedence.
 };
