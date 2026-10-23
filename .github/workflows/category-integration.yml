@@ -34,6 +34,24 @@ jobs:
             frontend/package-lock.json
       - run: npm ci
       - run: npm ci --prefix frontend
-      - run: node --test backend/test
-      - run: node --test frontend/test
+      - name: Run backend tests
+        shell: bash
+        run: |
+          shopt -s nullglob
+          test_files=(backend/test/*.test.js backend/test/*.test.mjs backend/test/*.test.cjs)
+          if (( ${#test_files[@]} == 0 )); then
+            echo "No backend test files found" >&2
+            exit 1
+          fi
+          node --test "${test_files[@]}"
+      - name: Run frontend tests
+        shell: bash
+        run: |
+          shopt -s nullglob
+          test_files=(frontend/test/*.test.js frontend/test/*.test.mjs frontend/test/*.test.cjs)
+          if (( ${#test_files[@]} == 0 )); then
+            echo "No frontend test files found" >&2
+            exit 1
+          fi
+          node --test "${test_files[@]}"
       - run: npm run build --prefix frontend
