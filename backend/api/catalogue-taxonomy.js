@@ -2,6 +2,7 @@
 const {createTaxonomyService}=require('../services/catalogue-taxonomy');
 function createTaxonomyRouter(express,db,audit){const router=express.Router(),service=createTaxonomyService(db,audit);
  router.use((req,res,next)=>{res.set('Cache-Control','private, no-store');if(!req.admin?.id)return res.status(401).json({error:'Admin sign-in required'});return next();});
+ router.use('/imports-v2',require('./catalogue-tag-imports').createTagImportRouter({express,multer:require('multer'),db,audit}));
  const route=fn=>async(req,res)=>{try{await fn(req,res);}catch(e){const status=e.status||(['23505'].includes(e.code)?409:['23503','23514','22P02'].includes(e.code)?400:503);res.status(status).json({error:e.status?e.message:status===409?'A reference with this code or name already exists':status===400?'Invalid taxonomy reference or field value':'Tag reference data unavailable; reload and retry'});}};
  router.get('/state',route(async(_req,res)=>res.json(await service.state())));
  router.get('/categories/:id/groups',route(async(req,res)=>res.json(await service.groups(req.params.id))));
