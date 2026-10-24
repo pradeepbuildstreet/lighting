@@ -1,0 +1,5 @@
+export function referenceDraft(row,kind,group=''){const d={id:row?.id||'',edit_token:row?.edit_token||'',code:row?.code||'',name:row?.name||'',is_active:row?.is_active??true,sort_order:row?.sort_order??0};if(kind==='tags')d.tag_group_id=row?.tag_group_id||group;if(kind==='product-kinds'){d.entry_profile=row?.entry_profile||'general';d.fixed_source_mode=row?.fixed_source_mode||null;}return d;}
+export function draftSignature(value){return JSON.stringify(value);}
+export function mergeReference(items,row,limit=50){return items.some(item=>item.id===row.id)?items.map(item=>item.id===row.id?row:item):[row,...items].slice(0,limit);}
+export function appendGroup(ids,id){if(ids.includes(id))return ids;if(ids.length>=200)throw new Error('This editor supports up to 200 groups per configuration.');return [...ids,id];}
+export function moveGroup(ids,index,direction){const next=[...ids],to=index+direction;if(index<0||index>=next.length||to<0||to>=next.length)return next;[next[index],next[to]]=[next[to],next[index]];return next;}

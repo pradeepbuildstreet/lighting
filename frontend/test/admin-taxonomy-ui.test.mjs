@@ -1,0 +1,13 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {referenceDraft,draftSignature,mergeReference,appendGroup,moveGroup} from '../lib/admin-taxonomy-ui.mjs';
+test('new reference has explicit defaults',()=>assert.equal(referenceDraft(null,'tag-groups').is_active,true));
+test('inactive reference remains inactive',()=>assert.equal(referenceDraft({id:'a',is_active:false},'tag-groups').is_active,false));
+test('tag group is retained',()=>assert.equal(referenceDraft({tag_group_id:'a'},'tags','b').tag_group_id,'a'));
+test('kind retains profile and fixed mode',()=>assert.equal(referenceDraft({entry_profile:'light_source',fixed_source_mode:'integrated'},'product-kinds').fixed_source_mode,'integrated'));
+test('draft signature detects a change',()=>assert.notEqual(draftSignature({name:'A'}),draftSignature({name:'B'})));
+test('saved reference updates in place',()=>assert.deepEqual(mergeReference([{id:'a'},{id:'b'}],{id:'a',name:'new'}).map(x=>x.id),['a','b']));
+test('new reference stays visible within bounded page',()=>assert.deepEqual(mergeReference([{id:'a'},{id:'b'}],{id:'c'},2).map(x=>x.id),['c','a']));
+test('group selection deduplicates',()=>assert.deepEqual(appendGroup(['a'],'a'),['a']));
+test('group payload is bounded',()=>assert.throws(()=>appendGroup(Array.from({length:200},(_,i)=>String(i)),'new')));
+test('group reordering preserves members',()=>assert.deepEqual(moveGroup(['a','b'],0,1),['b','a']));
+test('invalid reorder is harmless',()=>assert.deepEqual(moveGroup(['a'],0,-1),['a']));
