@@ -1,6 +1,7 @@
 "use strict";
 const V=require("../validators/catalogue");
 const categoryPolicy=require('./category-policy');
+const {assertLegacyProduct}=require('./catalogue-legacy-product-guard');
 function createProductService(db){
 async function audit(c,actor,entity,id,action,before,after){await c.query('INSERT INTO admin_audit_log(actor_id,action,entity_type,entity_id,before_data,after_data) VALUES($1,$2,$3,$4,$5,$6)',[actor.id,action,entity,id,before||null,after||null]);}
 async function detail(c,id){
@@ -12,10 +13,12 @@ async function detail(c,id){
  return {...p,specs,category_ids:categories.map(x=>x.category_id),primary_category_id:categories.find(x=>x.is_primary)?.category_id||null};
 }
 async function writeProduct(c,actor,id,data,revision){
- await db.actor(c,actor);await categoryPolicy.validateAssignments(c,data.categories);let before=null;
+ await db.actor(c,actor);await categoryPolicy.validateAssignments(c,data.categories);
+ await c.query('SELECT pg_advisory_xact_lock(8102403)');let before=null;
  if(id){
   const locked=(await c.query('SELECT * FROM products WHERE id=$1 FOR UPDATE',[id])).rows[0];
   if(!locked){const e=new Error('Product not found');e.status=404;throw e;}
+  await assertLegacyProduct(c,locked);
   if(locked.product_kind!==data.product_kind)V.fail('Product kind cannot be changed');
   if(String(locked.revision)!==String(revision)){const e=new Error('Product changed since loading. Reload before saving.');e.status=409;throw e;}
   before=await detail(c,id);
@@ -38,7 +41,6 @@ async function writeProduct(c,actor,id,data,revision){
  for(const category of data.categories)await c.query('INSERT INTO product_categories(product_id,category_id,is_primary) VALUES($1,$2,$3)',[id,category,category===data.primary]);
  const after=await detail(c,id);await audit(c,actor,'products',id,before?'update':'create',before,after);return after;
 }
-
 return {audit,detail,writeProduct};
 }
 module.exports={createProductService};

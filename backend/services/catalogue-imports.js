@@ -1,7 +1,9 @@
 "use strict";
 const crypto=require('node:crypto'),V=require('../validators/catalogue');
 const categoryPolicy=require('./category-policy');
+const {assertLegacyProduct}=require('./catalogue-legacy-product-guard');
 function problem(status,message){const e=new Error(message);e.status=status;throw e;}
+function legacyRows(rows){if(rows.some(r=>r.sheet==='ProductTags'||r.sheet==='Metadata'&&(r.record_key==='tag-model-v2'||r.staged_data?.format_version===2)))problem(409,'Version-2 import job requires the imports-v2 routes');}
 function createImports(db,products,parseWorkbook){
  async function preview(actor,buffer,mode='create'){
   if(!['create','update','upsert'].includes(mode))V.fail('Invalid import mode');
@@ -16,6 +18,7 @@ function createImports(db,products,parseWorkbook){
     if(!errors.length)try{
      const validated=V.product(r.payload);categoryPolicy.checkCategoryRows(validated.categories,categories.rows);if(counts.get(key)>1)V.fail('SKU repeats in workbook');
      const old=(await c.query('SELECT id,revision,product_kind FROM products WHERE sku=$1',[key])).rows[0];
+     if(old)await assertLegacyProduct(c,old,400);
      if(old&&mode==='create')V.fail('SKU already exists');if(!old&&mode==='update')V.fail('SKU does not exist');if(old&&old.product_kind!==r.payload.product_kind)V.fail('Cannot change product kind');
      action=old?'update':'insert';staged={payload:r.payload,product_id:old?.id||null,expected_revision:old?.revision||null};
     }catch(e){if(e.status!==400)throw e;errors.push(e.message);}
@@ -29,14 +32,15 @@ function createImports(db,products,parseWorkbook){
  }
  async function get(actor,id){
   V.uuid(id);const job=(await db.query('SELECT * FROM import_jobs WHERE id=$1 AND created_by=$2',[id,actor.id])).rows[0];if(!job)problem(404,'Import job not found');
-  return {job,rows:(await db.query('SELECT * FROM import_row_results WHERE job_id=$1 ORDER BY sheet,row_number',[id])).rows};
+  const rows=(await db.query('SELECT * FROM import_row_results WHERE job_id=$1 ORDER BY sheet,row_number',[id])).rows;legacyRows(rows);return {job,rows};
  }
  async function commit(actor,id,token,confirm){
   V.uuid(id);if(typeof token!=='string'||!/^[a-f0-9]{64}$/.test(token))V.fail('Invalid preview token');if(confirm!==undefined&&typeof confirm!=='boolean')V.fail('Invalid replacement confirmation');
   return db.transaction(async c=>{
+   await c.query('SELECT pg_advisory_xact_lock(8102401)');await c.query('SELECT pg_advisory_xact_lock(8102403)');
    const job=(await c.query('SELECT *,expires_at<=now() AS expired FROM import_jobs WHERE id=$1 FOR UPDATE',[id])).rows[0];
    if(!job||job.created_by!==actor.id)problem(404,'Import job not found');if(job.preview_revision!==token)problem(409,'Preview token mismatch');
-   const rows=(await c.query('SELECT * FROM import_row_results WHERE job_id=$1 ORDER BY sheet,row_number',[id])).rows;
+   const rows=(await c.query('SELECT * FROM import_row_results WHERE job_id=$1 ORDER BY sheet,row_number',[id])).rows;legacyRows(rows);
    if(job.status==='committed')return {job_id:id,replayed:true,products:rows.map(r=>r.staged_data.result)};
    if(job.status!=='preview'||job.expired||!rows.length||rows.some(r=>r.action==='error'))problem(409,'Preview is invalid or expired; upload again');
    if(rows.some(r=>r.action==='update')&&!confirm)problem(409,'Confirm full field and category replacement');
