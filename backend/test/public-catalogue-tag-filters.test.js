@@ -1,0 +1,24 @@
+"use strict";
+const test=require('node:test'),A=require('node:assert/strict'),F=require('../services/public-catalogue-tag-filters');
+const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333';
+const encode=x=>JSON.stringify(x);
+test('empty selections stay empty',()=>{A.deepEqual(F.selections(undefined),[]);A.deepEqual(F.selections('[]'),[]);});
+for(const input of ['bad','{}',[],encode([{group_id:'bad',tag_ids:[]}])])test('malformed selection rejected '+String(input),()=>A.throws(()=>F.selections(input),e=>e.status===400));
+test('duplicate group rejected',()=>A.throws(()=>F.selections(encode([{group_id:a,tag_ids:[b]},{group_id:a,tag_ids:[c]}]))));
+test('duplicate tags canonicalised',()=>A.deepEqual(F.selections(encode([{group_id:a,tag_ids:[c,b,b]}]))[0].tag_ids,[b,c]));
+test('case normalised',()=>A.equal(F.selections(encode([{group_id:a.toUpperCase(),tag_ids:[b]}]))[0].group_id,a));
+test('unclassified is a selection, not a stored tag',()=>A.deepEqual(F.selections(encode([{group_id:a,tag_ids:[],unclassified:true}])),[{group_id:a,tag_ids:[],unclassified:true}]));
+test('empty disabled group removed',()=>A.deepEqual(F.selections(encode([{group_id:a,tag_ids:[],unclassified:false}])),[]));
+test('boolean strings rejected',()=>A.throws(()=>F.selections(encode([{group_id:a,tag_ids:[b],unclassified:'false'}]))));
+test('unknown fields rejected',()=>A.throws(()=>F.selections(encode([{group_id:a,tag_ids:[b],sql:'anything'}]))));
+test('oversized JSON rejected',()=>A.throws(()=>F.selections(' '.repeat(16001))));
+test('group limit enforced',()=>A.throws(()=>F.selections(encode(Array(21).fill({group_id:a,tag_ids:[b]})))));
+test('per-group tag limit enforced',()=>A.throws(()=>F.selections(encode([{group_id:a,tag_ids:Array(101).fill(b)}]))));
+test('SQL uses public eligibility and parameterised selectors',()=>{A.match(F.WITH,/FROM public_products p/);A.match(F.WITH,/jsonb_to_recordset\(\$8::jsonb\)/);A.doesNotMatch(F.WITH,/FROM products\b/);});
+test('root visibility and category applicability both participate',()=>{A.match(F.WITH,/catalogue_filter_tag_groups/);A.match(F.WITH,/policy.allow_direct_products/);A.match(F.WITH,/category_tag_groups cg/);A.match(F.WITH,/JOIN scope_nodes/);});
+test('all groups must match and choices within a group are OR',()=>{A.match(F.WITH,/tag_id=ANY\(s.tag_ids\)/);A.match(F.WITH,/OR \(s.unclassified AND NOT EXISTS/);A.match(F.WITH,/survivors AS/);A.match(F.WITH,/s.group_id<>a.group_id/);});
+test('option counts use distinct products',()=>A.match(F.SQL.options,/count\(DISTINCT c.product_id\)/));
+function fixture(meta=[],inventory=[]){const calls=[],db={transaction:f=>f({query:async(s,args)=>{calls.push([s,args]);if(s.startsWith('SELECT version'))return {rows:[{version:2}]};if(s===F.SQL.inventory)return {rows:inventory};if(s===F.SQL.metadata)return {rows:meta};return {rows:[]};}})},domain={options:()=>({q:'',kind:'',category:'',brand:'',currency:'',min:null,max:null,page:1,limit:20,order:'p.name ASC,p.id ASC'})};return {calls,service:F.createTagListingService(db,domain)};}
+test('all-unclassified groups are hidden',async()=>{const f=fixture([{id:a,eligible_count:3,classified_count:0}]);A.deepEqual((await f.service.facets()).groups,[]);});
+test('unclassified count is contextual eligible minus classified',async()=>{const f=fixture([{id:a,eligible_count:3,classified_count:2}]);A.equal((await f.service.facets()).groups[0].not_classified_count,1);});
+test('oversized configured scope fails closed',async()=>{const f=fixture([],Array(201).fill({id:a}));await A.rejects(f.service.facets(),e=>e.status===503);});
