@@ -1,33 +1,38 @@
 "use strict";
 const crypto=require('node:crypto'),V=require('../validators/catalogue'),S=require('./catalogue-duplicate-scoring');
+const P=require('./catalogue-duplicate-model');
 function error(status,message){const e=new Error(message);e.status=status;throw e;}
 function digest(rows){return crypto.createHash('sha256').update(JSON.stringify(rows.map(p=>[p.id,String(p.revision),p.is_active]).sort((a,b)=>a[0].localeCompare(b[0])))).digest('hex');}
-function createDuplicateService(db){
+function createDuplicateService(db,dependencies={}){
+ const tagScoring=()=>dependencies.tagScoring||require('./catalogue-tag-duplicate-scoring');
  async function auditLog(c,actor,id,action,data){await c.query("INSERT INTO admin_audit_log(actor_id,action,entity_type,entity_id,after_data) VALUES($1,$2,'products',$3,$4)",[actor.id,action,id,data]);}
- async function corpus(c,kind){
+ async function model(c,id){const row=(await c.query('SELECT EXISTS(SELECT 1 FROM product_attributes WHERE product_id=$1) OR EXISTS(SELECT 1 FROM product_tags WHERE product_id=$1) AS tag_model',[id])).rows[0];const tagged=row?.tag_model===true;if(tagged&&!(await c.query('SELECT version FROM catalogue_taxonomy_versions WHERE version=3')).rows.length)error(503,'Integrated tag-product cutover is not activated');return tagged;}
+ async function corpus(c,kind,tagged=false){
+  if(tagged){const rows=(await c.query('SELECT p.* FROM products p ORDER BY p.id LIMIT 1001 FOR SHARE OF p')).rows;if(rows.length>1000)error(409,'Catalogue exceeds the synchronous tag audit limit; a complete background scan is required');return tagScoring().loadEvidence(c,rows);}
   const result=await c.query(`SELECT p.*,CASE WHEN p.product_kind='fixture' THEN to_jsonb(fs) ELSE to_jsonb(ls) END AS specs,
    COALESCE((SELECT array_agg(DISTINCT m.sha256) FROM product_media m WHERE m.product_id=p.id AND m.media_type='image' AND m.sha256 IS NOT NULL),'{}'::text[]) AS image_hashes
    FROM products p LEFT JOIN fixture_specs fs ON fs.product_id=p.id LEFT JOIN light_specs ls ON ls.product_id=p.id
    WHERE p.product_kind=$1 ORDER BY p.id LIMIT 1001 FOR SHARE OF p`,[kind]);
   if(result.rows.length>1000)error(409,'Catalogue exceeds the synchronous audit limit; a complete background scan is required');return result.rows;
  }
+ async function lock(c,actor){await c.query('SELECT pg_advisory_xact_lock(8102401)');await c.query('SELECT pg_advisory_xact_lock(8102403)');await db.actor(c,actor);}
  async function run(actor,id,revision){
   V.uuid(id);const expected=V.num(revision,'revision',{integer:true,positive:true});if(expected===null)V.fail('Revision required');
   return db.transaction(async c=>{
-   await c.query('SELECT pg_advisory_xact_lock(8102403)');await db.actor(c,actor);
+   await lock(c,actor);
    const product=(await c.query('SELECT * FROM products WHERE id=$1 FOR UPDATE',[id])).rows[0];
    if(!product)error(404,'Product not found');if(String(product.revision)!==String(expected))error(409,'Product changed; reload');
-   const records=await corpus(c,product.product_kind),subject=records.find(p=>p.id===id);if(!subject)error(409,'Subject absent from audit scan');
-   const found=records.filter(p=>p.id!==id).map(p=>({candidate:p,result:S.compare(subject,p)})).filter(x=>x.result&&x.result.overall_score>=35).sort((a,b)=>b.result.overall_score-a.result.overall_score||a.candidate.id.localeCompare(b.candidate.id));
-   const audit=(await c.query("INSERT INTO product_duplicate_audits(product_id,product_revision,status,algorithm_version,created_by,corpus_digest,scanned_count) VALUES($1,$2,'running',$3,$4,$5,$6) RETURNING *",[id,product.revision,S.ALGORITHM,actor.id,digest(records),records.length-1])).rows[0];
-   for(const x of found)await c.query('INSERT INTO product_duplicate_candidates(audit_id,product_id,candidate_product_id,overall_score,spec_score,image_score,evidence) VALUES($1,$2,$3,$4,$5,$6,$7)',[audit.id,id,x.candidate.id,x.result.overall_score,x.result.spec_score,null,x.result.evidence]);
+   const tagged=await model(c,id),scorer=tagged?tagScoring():S,hash=tagged?P.tagDigest:digest;
+   const records=await corpus(c,product.product_kind,tagged),subject=records.find(p=>p.id===id);if(!subject)error(409,'Subject absent from audit scan');if(tagged&&!subject.attributes)error(409,'Tag-model attributes are missing; correct the product before auditing');
+   const found=records.filter(p=>p.id!==id).map(p=>({candidate:p,result:scorer.compare(subject,p)})).filter(x=>x.result&&x.result.overall_score>=35).sort((a,b)=>b.result.overall_score-a.result.overall_score||a.candidate.id.localeCompare(b.candidate.id));
+   const audit=(await c.query("INSERT INTO product_duplicate_audits(product_id,product_revision,status,algorithm_version,created_by,corpus_digest,scanned_count) VALUES($1,$2,'running',$3,$4,$5,$6) RETURNING *",[id,product.revision,scorer.ALGORITHM,actor.id,hash(records),records.length-1])).rows[0];
+   for(const x of found)await c.query('INSERT INTO product_duplicate_candidates(audit_id,product_id,candidate_product_id,overall_score,spec_score,image_score,evidence) VALUES($1,$2,$3,$4,$5,$6,$7)',[audit.id,id,x.candidate.id,x.result.overall_score,x.result.spec_score,x.result.image_score??null,x.result.evidence]);
    await c.query("UPDATE product_duplicate_audits SET status='completed',completed_at=now() WHERE id=$1",[audit.id]);
    await c.query("UPDATE products SET published=false,approved_revision=NULL,approved_by=NULL,approved_at=NULL,review_status='pending_review',duplicate_of_product_id=NULL WHERE id=$1",[id]);
-   // Record the post-status-change corpus snapshot used for freshness checks.
-   const updated=records.map(p=>p.id===id?{...p,review_status:'pending_review'}:p);
-   await c.query('UPDATE product_duplicate_audits SET corpus_digest=$2 WHERE id=$1',[audit.id,digest(updated)]);
-   await auditLog(c,actor,id,'duplicate_audit',{audit_id:audit.id,candidates:found.length,scanned:records.length-1});
-   return {audit:{...audit,status:'completed'},candidates:found.map(x=>({candidate_id:x.candidate.id,sku:x.candidate.sku,name:x.candidate.name,...x.result}))};
+   const updated=records.map(p=>p.id===id?{...p,review_status:'pending_review',duplicate_of_product_id:null}:p),corpus_digest=hash(updated);
+   await c.query('UPDATE product_duplicate_audits SET corpus_digest=$2 WHERE id=$1',[audit.id,corpus_digest]);
+   await auditLog(c,actor,id,'duplicate_audit',{audit_id:audit.id,candidates:found.length,scanned:records.length-1,algorithm_version:scorer.ALGORITHM});
+   return {audit:{...audit,status:'completed',corpus_digest},candidates:found.map(x=>({candidate_id:x.candidate.id,sku:x.candidate.sku,name:x.candidate.name,...x.result}))};
   });
  }
  async function detail(id){V.uuid(id);const audit=(await db.query('SELECT * FROM product_duplicate_audits WHERE id=$1',[id])).rows[0];if(!audit)error(404,'Audit not found');
@@ -38,13 +43,15 @@ function createDuplicateService(db){
   V.uuid(auditId);if(!['approve_distinct','confirm_duplicate','request_correction','reject'].includes(decision))V.fail('Invalid review decision');notes=V.text(notes,'Review notes',true,5000);
   if(decision==='confirm_duplicate')V.uuid(target,'duplicate target');else if(target)V.fail('Duplicate target is only valid for confirm_duplicate');
   return db.transaction(async c=>{
-   await c.query('SELECT pg_advisory_xact_lock(8102403)');await db.actor(c,actor);
+   await lock(c,actor);
    const audit=(await c.query('SELECT * FROM product_duplicate_audits WHERE id=$1 FOR UPDATE',[auditId])).rows[0];if(!audit)error(404,'Audit not found');
    const product=(await c.query('SELECT * FROM products WHERE id=$1 FOR UPDATE',[audit.product_id])).rows[0];
    if(!product||audit.status!=='completed'||String(audit.product_revision)!==String(product.revision))error(409,'Audit is stale or incomplete; rerun it');
+   const tagged=await model(c,product.id);P.assertAlgorithm(audit,tagged);
    const latest=(await c.query('SELECT id FROM product_duplicate_audits WHERE product_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[product.id])).rows[0];if(latest?.id!==auditId)error(409,'A newer audit exists');
    if((await c.query('SELECT id FROM product_duplicate_reviews WHERE audit_id=$1 LIMIT 1',[auditId])).rows.length)error(409,'Audit already reviewed; run a new audit');
-   const records=await corpus(c,product.product_kind);if(audit.corpus_digest!==digest(records))error(409,'Catalogue evidence changed; rerun the audit');
+   const records=await corpus(c,product.product_kind,tagged);if(tagged&&!records.find(p=>p.id===product.id)?.attributes)error(409,'Tag-model attributes are missing; rerun after correction');
+   if(audit.corpus_digest!==(tagged?P.tagDigest:digest)(records))error(409,'Catalogue evidence changed; rerun the audit');
    if(decision==='confirm_duplicate'){
     if(target===product.id)V.fail('Cannot duplicate a product onto itself');
     const candidate=(await c.query('SELECT candidate_product_id FROM product_duplicate_candidates WHERE audit_id=$1 AND candidate_product_id=$2',[auditId,target])).rows[0];
