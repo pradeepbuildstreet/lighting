@@ -1,0 +1,15 @@
+import test from 'node:test';
+import A from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=n=>readFileSync(new URL('../app/admin/catalogue/'+n,import.meta.url),'utf8');
+const manager=read('CatalogueManager.tsx'),dealers=read('CatalogueDealerPanel.tsx');
+test('product list is retained in edit mode',()=>A.match(manager,/productMode!==\x27view\x27\?/));
+test('product editor follows the selected row',()=>A.ok(manager.includes("</tr>{productMode==='edit'&&product.id===p.id&&<InlineEditorRow columns={6}")));
+test('reference editor follows the selected row',()=>A.ok(manager.includes('</tr>{masterOpen&&master.id===m.id&&<InlineEditorRow')));
+test('new forms precede data rows',()=>{A.ok(manager.indexOf('label="New product editor"')<manager.indexOf('productRows.map'));A.ok(manager.indexOf('label="New reference editor"')<manager.indexOf('referenceRows.map'));});
+test('save handlers keep editors open and retain known saved data',()=>{A.match(manager,/setProductMode\('edit'\);setNotice\('Draft saved/);A.match(manager,/setMaster\(m\);setAddressText\(text\);masterBaseline/);A.match(manager,/Product saved, but reload failed/);});
+test('close restores focus and dirty checks remain',()=>{A.match(manager,/trigger.current.focus/);A.match(manager,/useAdminNavigationGuard/);A.match(manager,/Discard unsaved catalogue edits/);});
+test('selected records outside refreshed inventory stay anchored',()=>{A.match(manager,/productRows=.*\[product,...products\]/);A.match(manager,/referenceRows=.*referenceList.some/);});
+test('reference types remain available',()=>{for(const name of ['categories','fixture-types','light-types','dealers'])A.ok(manager.includes(name));});
+test('media preview import and review integrations remain',()=>{for(const name of ['ProductConfigurationPanel','ProductPreview','ProductAdminView','ProductReviewPanel','CatalogueImportPanel'])A.ok(manager.includes('<'+name));A.match(manager,/hidden=\{workspace!=='import'\}/);A.match(manager,/hidden=\{workspace!=='review'\}/);});
+test('dealer quote paths and history remain isolated from product saves',()=>{for(const s of ['/dealers','/dealer-listings/','/prices','valid_from','valid_to','price_basis','tax_percent'])A.ok(dealers.includes(s));A.doesNotMatch(dealers,/\/products\x27,\x27POST/);});

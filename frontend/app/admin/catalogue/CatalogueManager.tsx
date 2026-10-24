@@ -1,173 +1,79 @@
-"use client"; 
+"use client";
+import {Fragment,useEffect,useMemo,useRef,useState} from 'react';
 import {useAdminNavigationGuard} from '@/lib/use-admin-navigation-guard';
+import {orderedCategories,categoryRecord} from '@/lib/admin-category-hierarchy.mjs';
+import {categoryAssignmentError} from '@/lib/admin-category-policy.mjs';
+import {formSnapshot,referenceSnapshot,isDirty,navigationBlocked} from './ui-flow.mjs';
 import uiStyles from './CatalogueUI.module.css';
+import InlineEditorRow from './InlineEditorRow';
+import CatalogueReferenceForm from './CatalogueReferenceForm';
+import CatalogueProductForm from './CatalogueProductForm';
+import CatalogueDealerPanel from './CatalogueDealerPanel';
 import ProductPreview from './ProductPreview';
-import {useEffect,useMemo,useRef,useState} from 'react';
-import {orderedCategories,categoryParentChoices,categoryRecord} from '@/lib/admin-category-hierarchy.mjs';
-import {categoryAssignable,categoryAssignmentError} from '@/lib/admin-category-policy.mjs';
 import ProductConfigurationPanel from './ProductConfigurationPanel';
 import ProductReviewPanel from './ProductReviewPanel';
 import CatalogueImportPanel from './CatalogueImportPanel';
 import ProductAdminView from './ProductAdminView';
 import ProductVisibility from './ProductVisibility';
-import {formSnapshot,referenceSnapshot,isDirty,navigationBlocked} from './ui-flow.mjs';
-
-type Row = Record<string, any>;
-type Tab = 'categories'|'fixture-types'|'light-types'|'dealers';
+type Row=Record<string,any>;
+type Tab='categories'|'fixture-types'|'light-types'|'dealers';
 type Workspace='products'|'import'|'review'|'reference';
 type ProductMode='list'|'view'|'edit';
 type ProductPanel='overview'|'configuration'|'dealers'|'review';
-const tabs:Tab[]=['categories','fixture-types','light-types','dealers'];
-const label=(s:string)=>s.replace(/[_-]/g,' ');
+const tabs:Tab[]=['categories','fixture-types','light-types','dealers'],label=(s:string)=>s.replace(/[_-]/g,' ');
 const emptyProduct=():Row=>({sku:'',name:'',product_kind:'fixture',brand:'',model_number:'',description:'',selling_price:'',currency:'INR',is_active:true,category_ids:[],primary_category_id:'',specs:{fixture_type_id:'',light_source_mode:'replaceable',other_specs:{},inbuilt_specs:{}}});
 const emptyMaster=():Row=>({name:'',code:'',dealer_code:'',slug:'',parent_id:'',description:'',sort_order:0,is_active:true,allow_direct_products:true,base_type:'',technology:'',contact_person:'',phone:'',email:'',gstin:'',address:{}});
-async function api(path:string,method='GET',body?:unknown){
- const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),45000);
- try{const res=await fetch('/api/admin/catalogue'+path,{method,credentials:'same-origin',cache:'no-store',signal:controller.signal,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});
- const data=await res.json();if(!res.ok)throw new Error(data.error||`Request failed (${res.status})`);return data;
- }catch(e){if(e instanceof Error&&e.name==='AbortError')throw new Error(method==='GET'?'Request timed out; retry loading.':'Request timed out; reload saved data before repeating the write.');throw e;}finally{clearTimeout(timeout);}
-}
-function categoryPath(id:string,rows:Row[]):string{
- const parts:string[]=[];const seen=new Set<string>();let next=id;
- while(next&&!seen.has(next)){seen.add(next);const row=rows.find(x=>x.id===next);if(!row)break;parts.unshift(row.name);next=row.parent_id;}
- return parts.join(' → ');
-}
+async function api(path:string,method='GET',body?:unknown){const c=new AbortController(),timer=setTimeout(()=>c.abort(),45000);try{const r=await fetch('/api/admin/catalogue'+path,{method,credentials:'same-origin',cache:'no-store',signal:c.signal,...(body===undefined?{}:{headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})});const d=await r.json();if(!r.ok)throw new Error(d.error||'Catalogue request failed');return d;}catch(e){if(e instanceof Error&&e.name==='AbortError')throw new Error(method==='GET'?'Loading timed out; retry.':'Save timed out; reload saved data before retrying.');throw e;}finally{clearTimeout(timer);}}
 export default function CatalogueManager(){
- const [previewOpen,setPreviewOpen]=useState(false);
- const [workspace,setWorkspace]=useState<Workspace>('products');
- const [productMode,setProductMode]=useState<ProductMode>('list');const [productPanel,setProductPanel]=useState<ProductPanel>('overview');
- const navigationEpoch=useRef(0);const productBaseline=useRef('');const masterBaseline=useRef('');
- const [readBusy,setReadBusy]=useState(false);const [importBusy,setImportBusy]=useState(false);const [reviewBusy,setReviewBusy]=useState(false);
- const [tab,setTab]=useState<Tab>('categories');const [masters,setMasters]=useState<Record<string,Row[]>>({});
- const [products,setProducts]=useState<Row[]>([]);const [product,setProduct]=useState<Row>(emptyProduct());const [master,setMaster]=useState<Row>(emptyMaster());
- const [addressText,setAddressText]=useState('{}');const [otherSpecText,setOtherSpecText]=useState('{}');const [inbuiltText,setInbuiltText]=useState('{}');
- const [search,setSearch]=useState('');const [busy,setBusy]=useState(false);const [ready,setReady]=useState(false);
- const [error,setError]=useState('');const [notice,setNotice]=useState('');
- const [listings,setListings]=useState<Row[]>([]);const [history,setHistory]=useState<Row[]>([]);
- const [attach,setAttach]=useState<Row>({dealer_id:'',dealer_sku:'',minimum_order_qty:1,lead_time_days:''});
- const [quote,setQuote]=useState<Row>({listing_id:'',currency:'INR',list_price:'',discount_percent:0,price_basis:'tax_exclusive',tax_percent:''});
- const categories=masters.categories||[];
- const categoryState=useMemo(()=>{try{return {rows:orderedCategories(masters.categories||[]),error:''};}catch(e){return {rows:[],error:e instanceof Error?e.message:'Invalid category tree'};}},[masters.categories]);
- const categoryTree=categoryState.rows;
- const categorySelectionError=categoryAssignmentError(product.category_ids,product.primary_category_id,categoryTree);
- async function refresh(query=search){
-  await api('/state');const [m,p]=await Promise.all([api('/bootstrap'),api('/products?q='+encodeURIComponent(query))]);setMasters(m);setProducts(p.products);setReady(true);
- }
- async function perform(fn:()=>Promise<void>,write=false){
-  const epoch=navigationEpoch.current;(write?setBusy:setReadBusy)(true);setError('');setNotice('');
-  try{await fn();}catch(e){if(epoch===navigationEpoch.current||write)setError(e instanceof Error?e.message:'Operation failed');}finally{(write?setBusy:setReadBusy)(false);}
- }
+ const [workspace,setWorkspace]=useState<Workspace>('products'),[productMode,setProductMode]=useState<ProductMode>('list'),[productPanel,setProductPanel]=useState<ProductPanel>('overview'),[tab,setTab]=useState<Tab>('categories');
+ const [masters,setMasters]=useState<Record<string,Row[]>>({}),[products,setProducts]=useState<Row[]>([]),[product,setProduct]=useState<Row>(emptyProduct()),[master,setMaster]=useState<Row>(emptyMaster()),[masterOpen,setMasterOpen]=useState(false);
+ const [addressText,setAddressText]=useState('{}'),[otherSpecText,setOtherSpecText]=useState('{}'),[inbuiltText,setInbuiltText]=useState('{}'),[search,setSearch]=useState('');
+ const [busy,setBusy]=useState(false),[readBusy,setReadBusy]=useState(false),[importBusy,setImportBusy]=useState(false),[reviewBusy,setReviewBusy]=useState(false),[ready,setReady]=useState(false),[previewOpen,setPreviewOpen]=useState(false);
+ const [error,setError]=useState(''),[notice,setNotice]=useState(''),[listings,setListings]=useState<Row[]>([]);
+ const navigationEpoch=useRef(0),productBaseline=useRef(''),masterBaseline=useRef(JSON.stringify([emptyMaster(),'{}'])),writeLock=useRef(false),trigger=useRef<HTMLElement|null>(null);
+ const categoryState=useMemo(()=>{try{return {rows:orderedCategories(masters.categories||[]),error:''};}catch(e){return {rows:[],error:e instanceof Error?e.message:'Invalid category hierarchy'};}},[masters.categories]);
+ const categoryTree=categoryState.rows,categorySelectionError=categoryAssignmentError(product.category_ids,product.primary_category_id,categoryTree);
+ const productDirty=productMode==='edit'&&isDirty(formSnapshot(product,otherSpecText,inbuiltText),productBaseline.current),masterDirty=masterOpen&&isDirty(referenceSnapshot(master,addressText),masterBaseline.current);
+ useAdminNavigationGuard(workspace==='products'&&productDirty||workspace==='reference'&&masterDirty,busy||importBusy||reviewBusy,'catalogue');
+ function canLeave(){if(navigationBlocked(busy)||writeLock.current||importBusy||reviewBusy)return false;return !(workspace==='products'&&productDirty||workspace==='reference'&&masterDirty)||window.confirm('Discard unsaved catalogue edits?');}
+ function restoreFocus(){queueMicrotask(()=>{if(trigger.current?.isConnected)trigger.current.focus();});}
+ async function perform(fn:()=>Promise<void>,write=false){if(write&&writeLock.current)return;const epoch=navigationEpoch.current;if(write)writeLock.current=true;(write?setBusy:setReadBusy)(true);setError('');setNotice('');try{await fn();}catch(e){if(write||epoch===navigationEpoch.current)setError(e instanceof Error?e.message:'Operation failed');}finally{if(write)writeLock.current=false;(write?setBusy:setReadBusy)(false);}}
  const performWrite=(fn:()=>Promise<void>)=>perform(fn,true);
- useEffect(()=>{
-  masterBaseline.current=JSON.stringify([emptyMaster(),'{}']);const params=new URLSearchParams(window.location.search);
-  let saved:{workspace?:string;reference?:string;search?:string}={};try{saved=JSON.parse(sessionStorage.getItem('luminoza-catalogue-ui')||'{}');}catch(_){}
-  const requested=params.get('workspace')||saved.workspace;if(['products','import','review','reference'].includes(requested||''))setWorkspace(requested as Workspace);
-  const ref=params.get('reference')||saved.reference;if(tabs.includes(ref as Tab)){if(params.get('reference'))setWorkspace('reference');setTab(ref as Tab);}
-  if(typeof saved.search==='string')setSearch(saved.search);void perform(()=>refresh(saved.search||''));
- },[]);
- useEffect(()=>{if(ready){try{sessionStorage.setItem('luminoza-catalogue-ui',JSON.stringify({workspace,reference:tab,search}));}catch(_){}}},[ready,workspace,tab,search]);
- const draftDirty=workspace==='products'&&productMode==='edit'&&isDirty(signature(product,otherSpecText,inbuiltText),productBaseline.current)||workspace==='reference'&&isDirty(referenceSnapshot(master,addressText),masterBaseline.current);
- useAdminNavigationGuard(draftDirty,busy||importBusy||reviewBusy,'catalogue');
-
- function field(obj:Row,set:(v:Row)=>void,key:string,type='text',disabled=false){return <label className="field" key={key}>{label(key)}<input type={type} step={type==='number'?'any':undefined} value={obj[key]??''} disabled={disabled||busy} onChange={e=>set({...obj,[key]:e.target.value})} /></label>;}
- function changeSpec(key:string,value:unknown){setProduct({...product,specs:{...product.specs,[key]:value}});}
- function signature(p:Row,other:string,integrated:string){return formSnapshot(p,other,integrated);}
- function canLeave(){
-  if(navigationBlocked(busy)||importBusy||reviewBusy)return false;
-  if(workspace==='products'&&productMode==='edit'&&isDirty(signature(product,otherSpecText,inbuiltText),productBaseline.current)&&!window.confirm('Discard unsaved product edits?'))return false;
-  if(workspace==='reference'&&isDirty(referenceSnapshot(master,addressText),masterBaseline.current)&&!window.confirm('Discard unsaved reference-data edits?'))return false;
-  return true;
- }
- function selectWorkspace(next:Workspace){if(next===workspace||!canLeave())return;navigationEpoch.current++;if(workspace==='products'&&productMode==='edit')setProductMode('list');if(workspace==='reference'){const m=emptyMaster();setMaster(m);setAddressText('{}');masterBaseline.current=JSON.stringify([m,'{}']);}setWorkspace(next);setPreviewOpen(false);setError('');setNotice('');}
- async function editProduct(id:string){
-  const epoch=navigationEpoch.current;
-  const [d,listingData]=await Promise.all([api('/products/'+id),api('/products/'+id+'/dealers')]);
-  if(epoch!==navigationEpoch.current)return false;
-  const other=JSON.stringify(d.product.specs.other_specs||{},null,2),integrated=JSON.stringify(d.product.specs.inbuilt_specs||{},null,2);
-  setProduct(d.product);setOtherSpecText(other);setInbuiltText(integrated);productBaseline.current=signature(d.product,other,integrated);
-  setHistory([]);setListings(listingData.listings);setAttach({dealer_id:'',dealer_sku:'',minimum_order_qty:1,lead_time_days:''});setQuote({listing_id:'',currency:'INR',list_price:'',discount_percent:0,price_basis:'tax_exclusive',tax_percent:''});return true;
- }
- async function openProduct(id:string,mode:ProductMode='view',panel:ProductPanel='overview'){
-  if(!canLeave())return;navigationEpoch.current++;setWorkspace('products');setPreviewOpen(false);setProductMode('list');
-  await perform(async()=>{if(await editProduct(id)){setProductMode(mode);setProductPanel(panel);}});
- }
- function newProduct(){if(!canLeave())return;navigationEpoch.current++;const p=emptyProduct();setProduct(p);setOtherSpecText('{}');setInbuiltText('{}');productBaseline.current=signature(p,'{}','{}');setListings([]);setHistory([]);setProductMode('edit');setProductPanel('overview');setPreviewOpen(false);}
- function beginEdit(){if(reviewBusy){setError('Wait for this product’s review operation to finish.');return;}productBaseline.current=signature(product,otherSpecText,inbuiltText);setProductMode('edit');setPreviewOpen(false);}
- async function cancelEdit(){if(!canLeave())return;if(product.id){await perform(async()=>{if(await editProduct(product.id))setProductMode('view');});}else setProductMode('list');}
+ async function refresh(query=search){await api('/state');const [m,p]=await Promise.all([api('/bootstrap'),api('/products?q='+encodeURIComponent(query))]);setMasters(m);setProducts(p.products);setReady(true);}
+ useEffect(()=>{const params=new URLSearchParams(window.location.search);let saved:Row={};try{saved=JSON.parse(sessionStorage.getItem('luminoza-catalogue-ui')||'{}');}catch(_){}const w=params.get('workspace')||saved.workspace;if(['products','import','review','reference'].includes(w))setWorkspace(w);const t=params.get('reference')||saved.reference;if(tabs.includes(t)){setTab(t);if(params.get('reference'))setWorkspace('reference');}if(typeof saved.search==='string')setSearch(saved.search);void perform(()=>refresh(saved.search||''));},[]);
+ useEffect(()=>{if(ready)try{sessionStorage.setItem('luminoza-catalogue-ui',JSON.stringify({workspace,reference:tab,search}));}catch(_){}},[ready,workspace,tab,search]);
+ function closeMaster(){if(!canLeave())return;setMasterOpen(false);const m=emptyMaster();setMaster(m);setAddressText('{}');masterBaseline.current=referenceSnapshot(m,'{}');restoreFocus();}
+ function selectWorkspace(next:Workspace){if(next===workspace||!canLeave())return;navigationEpoch.current++;if(workspace==='products'&&productMode==='edit')setProductMode('list');setMasterOpen(false);setWorkspace(next);setPreviewOpen(false);setError('');setNotice('');}
+ function switchTab(next:Tab){if(!canLeave())return;navigationEpoch.current++;setTab(next);setMasterOpen(false);setError('');setNotice('');}
+ function openMaster(m:Row|null,button:HTMLElement){if(!canLeave())return;trigger.current=button;const d={...emptyMaster(),...(m?categoryRecord(m):{})},text=JSON.stringify(m?.address||{},null,2);setMaster(d);setAddressText(text);masterBaseline.current=referenceSnapshot(d,text);setMasterOpen(true);setError('');setNotice('');}
+ async function editProduct(id:string){const epoch=navigationEpoch.current;const [d,l]=await Promise.all([api('/products/'+id),api('/products/'+id+'/dealers')]);if(epoch!==navigationEpoch.current)return false;const p=d.product,o=JSON.stringify(p.specs.other_specs||{},null,2),i=JSON.stringify(p.specs.inbuilt_specs||{},null,2);setProduct(p);setOtherSpecText(o);setInbuiltText(i);productBaseline.current=formSnapshot(p,o,i);setListings(l.listings);return true;}
+ async function openProduct(id:string,mode:ProductMode='view',panel:ProductPanel='overview',button?:HTMLElement){if(!canLeave())return;if(button)trigger.current=button;navigationEpoch.current++;setWorkspace('products');setProductMode('list');setPreviewOpen(false);await perform(async()=>{if(await editProduct(id)){setProductMode(mode);setProductPanel(panel);}});}
+ function newProduct(button:HTMLElement){if(!canLeave())return;trigger.current=button;navigationEpoch.current++;const p=emptyProduct();setProduct(p);setOtherSpecText('{}');setInbuiltText('{}');productBaseline.current=formSnapshot(p,'{}','{}');setListings([]);setProductMode('edit');setPreviewOpen(false);}
+ function closeProduct(){if(!canLeave())return;navigationEpoch.current++;setProductMode('list');setPreviewOpen(false);restoreFocus();}
+ async function saveProduct(){if(categoryState.error)throw new Error(categoryState.error);if(categorySelectionError)throw new Error(categorySelectionError);const payload={...product,specs:{...product.specs,other_specs:JSON.parse(otherSpecText),...(product.product_kind==='fixture'?{inbuilt_specs:JSON.parse(inbuiltText)}:{})}},d=await api('/products'+(product.id?'/'+product.id:''),product.id?'PUT':'POST',payload),p=d.product,o=JSON.stringify(p.specs.other_specs||{},null,2),i=JSON.stringify(p.specs.inbuilt_specs||{},null,2);setProduct(p);setOtherSpecText(o);setInbuiltText(i);productBaseline.current=formSnapshot(p,o,i);setProductMode('edit');setNotice('Draft saved; editor remains below its product row. Review/publication is separate.');try{await refresh();await editProduct(p.id);}catch(_){setError('Product saved, but reload failed. Do not repeat the write solely for this error.');}}
+ async function saveMaster(){if(tab==='categories'&&categoryState.error)throw new Error(categoryState.error);const payload={...categoryRecord(master),parent_id:master.parent_id||null,...(tab==='dealers'?{address:JSON.parse(addressText)}:{})},d=await api('/'+tab+(master.id?'/'+master.id:''),master.id?'PUT':'POST',payload);const m={...emptyMaster(),...categoryRecord(d.item)},text=JSON.stringify(d.item.address||{},null,2);setMaster(m);setAddressText(text);masterBaseline.current=referenceSnapshot(m,text);setNotice('Reference saved; editor remains below its row.');try{await refresh();}catch(_){setError('Reference saved, but reload failed. Do not repeat the write solely for this error.');}}
  async function changedSelected(){await refresh();if(product.id)await editProduct(product.id);}
- async function saveProduct(){
-  if(categoryState.error)throw new Error(categoryState.error);
-  if(categorySelectionError)throw new Error(categorySelectionError);
-  const payload={...product,specs:{...product.specs,other_specs:JSON.parse(otherSpecText),...(product.product_kind==='fixture'?{inbuilt_specs:JSON.parse(inbuiltText)}:{})}};
-  const d=await api('/products'+(product.id?'/'+product.id:''),product.id?'PUT':'POST',payload);setProduct(d.product);const other=JSON.stringify(d.product.specs.other_specs||{},null,2),integrated=JSON.stringify(d.product.specs.inbuilt_specs||{},null,2);setOtherSpecText(other);setInbuiltText(integrated);productBaseline.current=signature(d.product,other,integrated);setProductMode('view');setProductPanel('overview');await refresh();await editProduct(d.product.id);setNotice('Product saved as an unpublished draft. Check customer visibility and complete review before publishing.');
- }
- function switchTab(t:Tab){if(!canLeave())return;navigationEpoch.current++;setAddressText('{}');setTab(t);const m=emptyMaster();setMaster(m);masterBaseline.current=JSON.stringify([m,'{}']);setError('');setNotice('');}
- async function saveMaster(){
-  if(tab==='categories'&&categoryState.error)throw new Error(categoryState.error);
-  const payload={...categoryRecord(master),parent_id:master.parent_id||null,...(tab==='dealers'?{address:JSON.parse(addressText)}:{})};
-  await api('/'+tab+(master.id?'/'+master.id:''),master.id?'PUT':'POST',payload);const m=emptyMaster();setMaster(m);setAddressText('{}');masterBaseline.current=JSON.stringify([m,'{}']);await refresh();setNotice('Master record saved.');
- }
- return <main className={`catalogue ${uiStyles.root}`}>
- <h1>Catalogue administration</h1>
- <p><a href="/admin">Admin overview</a> · View is read-only; Edit changes a draft; Preview shows customer presentation.</p>
- <nav aria-label="Catalogue workspaces">{([['products','Products'],['import','Bulk import'],['review','Review queue'],['reference','Reference data']] as [Workspace,string][]).map(([key,name])=><button type="button" key={key} disabled={busy||importBusy||reviewBusy} aria-pressed={workspace===key} onClick={()=>selectWorkspace(key)}>{name}</button>)}</nav>
- {busy&&<p role="status">Saving… please wait before leaving this workspace.</p>}
- {error&&<div role="alert" className="error">{error}<button type="button" disabled={busy||readBusy} onClick={()=>void perform(refresh)}>Retry loading</button></div>}
- {notice&&<p role="status" className="notice">{notice}</p>}
- {categoryState.error&&<p role="alert" className="error">Category tree unavailable: {categoryState.error}</p>}
- {!ready?<p>Loading catalogue configuration. If loading fails, use Retry loading above.</p>:<>
- <div hidden={workspace!=='import'}><CatalogueImportPanel parentBusy={false} onBusyChange={setImportBusy} onCommitted={refresh} onViewProduct={id=>openProduct(id,'view')}/>{importBusy&&<p role="status">Import operation in progress. You can use Reference data without losing this preview.</p>}<div className="actions"><button type="button" onClick={()=>selectWorkspace('products')}>View products</button><button type="button" onClick={()=>selectWorkspace('review')}>Open review queue</button></div></div>
+ const productRows=productMode==='edit'&&product.id&&!products.some(p=>p.id===product.id)?[product,...products]:products;
+ const referenceList=tab==='categories'?categoryTree:masters[tab]||[],referenceRows=masterOpen&&master.id&&!referenceList.some(m=>m.id===master.id)?[{...master,_depth:0,_path:master.name},...referenceList]:referenceList;
+ const productEditor=()=> <CatalogueProductForm product={product} setProduct={setProduct} masters={masters} categories={categoryTree} other={otherSpecText} setOther={setOtherSpecText} integrated={inbuiltText} setIntegrated={setInbuiltText} busy={busy} categoryError={categorySelectionError} treeError={categoryState.error} onSave={()=>void performWrite(saveProduct)} onCancel={closeProduct}/>;
+ const referenceEditor=()=> <CatalogueReferenceForm tab={tab} draft={master} setDraft={setMaster} address={addressText} setAddress={setAddressText} categories={categoryTree} busy={busy} treeError={categoryState.error} onSave={()=>void performWrite(saveMaster)} onCancel={closeMaster}/>;
+ return <main className={`catalogue ${uiStyles.root}`}><h1>Catalogue administration</h1><p><a href="/admin">Admin overview</a> · View is read-only. Editing stays with its selected row.</p><nav aria-label="Catalogue workspaces">{(['products','import','review','reference'] as Workspace[]).map(w=><button key={w} disabled={busy||importBusy||reviewBusy} aria-pressed={workspace===w} onClick={()=>selectWorkspace(w)}>{w==='import'?'Bulk import':w==='reference'?'Reference data':w==='review'?'Review queue':'Products'}</button>)}</nav>
+ {busy&&<p role="status">Saving… wait before leaving.</p>}{readBusy&&<p role="status">Loading…</p>}{error&&<div role="alert" className="error">{error}<button disabled={busy||readBusy} onClick={()=>void perform(refresh)}>Retry loading</button></div>}{notice&&<p role="status" className="notice">{notice}</p>}{categoryState.error&&<p role="alert" className="error">{categoryState.error}</p>}
+ {!ready?<p>Loading catalogue configuration…</p>:<>
+ <div hidden={workspace!=='import'}><CatalogueImportPanel parentBusy={false} onBusyChange={setImportBusy} onCommitted={refresh} onViewProduct={id=>openProduct(id,'view')}/><button onClick={()=>selectWorkspace('products')}>View products</button><button onClick={()=>selectWorkspace('review')}>Open review queue</button></div>
  <div hidden={workspace!=='review'}><ProductReviewPanel mode="queue" parentBusy={false} onBusyChange={setReviewBusy} onChanged={refresh} onOpenProduct={(id,view)=>openProduct(id,view?'view':'edit')} onReviewProduct={id=>openProduct(id,'view','review')}/></div>
- {workspace==='reference'&&<><nav aria-label="Reference data">{tabs.map(key=><button type="button" key={key} disabled={busy} aria-pressed={tab===key} onClick={()=>switchTab(key)}>{label(key)}</button>)}</nav><><section className="panel"><h2>{label(tab)}</h2><button disabled={busy} onClick={()=>{if(!canLeave())return;const m=emptyMaster();setMaster(m);setAddressText('{}');masterBaseline.current=JSON.stringify([m,'{}']);}}>New record</button><div className="scroll"><table><thead><tr><th>Code / slug</th><th>Name</th><th>Active</th>{tab==='categories'&&<th>Direct products</th>}<th/></tr></thead><tbody>{(tab==='categories'?categoryTree:masters[tab]||[]).map(m=><tr key={m.id}><td>{m.slug||m.dealer_code||m.code}</td><td style={tab==='categories'?{paddingInlineStart:12+m._depth*20}:undefined}>{m.name}{tab==='categories'&&<small style={{display:'block'}}>{m.parent_id?'Subcategory':'Category'} · {m._path}</small>}</td><td>{m.is_active?'Yes':'No'}</td>{tab==='categories'&&<td>{m.allow_direct_products===true?'Allowed':m.allow_direct_products===false?'Group only':'Unavailable'}</td>}<td><button disabled={busy} onClick={()=>{if(!canLeave())return;const next={...emptyMaster(),...categoryRecord(m)},text=JSON.stringify(m.address||{},null,2);setMaster(next);setAddressText(text);masterBaseline.current=JSON.stringify([next,text]);}}>Edit</button></td></tr>)}</tbody></table></div></section>
- <form className="panel" onSubmit={e=>{e.preventDefault();void performWrite(saveMaster);}}><h2>{master.id?'Edit':'New'} {label(tab)}</h2><div className="grid">{field(master,setMaster,tab==='categories'?'slug':tab==='dealers'?'dealer_code':'code','text',!!master.id&&tab!=='categories')}{field(master,setMaster,'name')}
- {tab==='categories'?<><label className="field">Parent category<select disabled={busy} value={master.parent_id||''} onChange={e=>setMaster({...master,parent_id:e.target.value})}><option value="">Root</option>{categoryParentChoices(categoryTree,master.id).map(c=><option key={c.id} value={c.id}>{c._path} ({c.slug})</option>)}</select></label>{field(master,setMaster,'sort_order','number')}{field(master,setMaster,'description')}<label className="field">Allow products directly<input type="checkbox" disabled={busy} checked={master.allow_direct_products===true} onChange={e=>setMaster({...master,allow_direct_products:e.target.checked})}/></label></>:null}
- {tab==='light-types'?<>{field(master,setMaster,'base_type')}{field(master,setMaster,'technology')}</>:null}
- {tab==='dealers'?<>{['contact_person','phone','email','gstin'].map(f=>field(master,setMaster,f))}<label className="field">Address (JSON object)<textarea value={addressText} onChange={e=>setAddressText(e.target.value)}/></label></>:null}
- <label className="field">Active<input type="checkbox" checked={!!master.is_active} onChange={e=>setMaster({...master,is_active:e.target.checked})}/></label></div><button disabled={busy||(tab==='categories'&&!!categoryState.error)}>Save record</button>{tab==='categories'&&<p>When direct products are off, this category is a navigation group. Move directly assigned products before switching this setting off.</p>}<p>Disable records rather than deleting referenced catalogue data.</p></form></></>}
- {workspace==='products'&&<>
- {productMode==='list'?<section className="panel"><h2>Products</h2><div className="actions"><input aria-label="SKU or name search" value={search} onChange={e=>setSearch(e.target.value)} placeholder="SKU or name"/><button type="button" disabled={busy||readBusy} onClick={()=>void perform(refresh)}>Search</button><button type="button" disabled={busy||readBusy} onClick={newProduct}>New product</button></div>
- {readBusy&&<p role="status">Loading product…</p>}<p>Up to 200 products. Use search to narrow the list. View is read-only; Edit opens the form.</p>
- <div className="scroll"><table><thead><tr><th>SKU</th><th>Name</th><th>Kind</th><th>Review status</th><th>Publication / customer visibility</th><th>Actions</th></tr></thead><tbody>{products.map(p=><tr key={p.id}><td>{p.sku}</td><td>{p.name}</td><td>{p.product_kind}</td><td><span className="enquiry-status">{p.review_status||'draft'}</span></td><td><ProductVisibility compact visibility={p.visibility} disabled={readBusy||busy} onReview={()=>void openProduct(p.id,'view','review')}/></td><td><button type="button" disabled={readBusy||busy} className="catalogue-secondary" onClick={()=>void openProduct(p.id,'view')}>View</button><button type="button" disabled={readBusy||busy} className="catalogue-secondary" onClick={()=>void openProduct(p.id,'edit')}>Edit</button></td></tr>)}</tbody></table></div>
- </section>:<>
- <section className="panel"><div className="actions"><button type="button" disabled={busy} onClick={()=>{if(!canLeave())return;navigationEpoch.current++;setProductMode('list');setPreviewOpen(false);}}>Back to Products</button></div><h2>{product.sku||'New product'} — {product.name||'Draft'}</h2><p>{productMode==='edit'?'Editing':'Saved product'} · Revision {product.revision??'Not saved'} · {product.review_status||'draft'}</p>
- {product.id&&<ProductVisibility visibility={product.visibility} disabled={busy||readBusy||reviewBusy} onReview={()=>void openProduct(product.id,'view','review')}/>}
- {productMode==='view'&&<nav aria-label="Selected product sections">{([['overview','Admin view'],['configuration','Manage media / light configuration'],['dealers','Manage dealer listings'],['review','Review & publication']] as [ProductPanel,string][]).map(([key,name])=><button type="button" key={key} disabled={busy||reviewBusy} aria-pressed={productPanel===key} onClick={()=>{setProductPanel(key);setPreviewOpen(false);}}>{name}</button>)}</nav>}
- </section>
- {productMode==='edit'? <form id="catalogue-product-editor" tabIndex={-1} className="panel" onSubmit={e=>{e.preventDefault();void performWrite(saveProduct);}}><fieldset disabled={busy}><h2>{product.id?'Edit':'New'} product</h2>
- <div className="grid">{field(product,setProduct,'sku')}{field(product,setProduct,'name')}
- <label className="field">Product kind<select disabled={busy||!!product.id} value={product.product_kind} onChange={e=>setProduct({...emptyProduct(),...product,product_kind:e.target.value,specs:e.target.value==='fixture'?{fixture_type_id:'',light_source_mode:'replaceable',other_specs:{},inbuilt_specs:{}}:{light_type_id:'',dimmable:null,other_specs:{}}})}><option value="fixture">Fixture</option><option value="light">Light</option></select></label>
- {field(product,setProduct,'brand')}{field(product,setProduct,'model_number')}{field(product,setProduct,'selling_price','number')}{field(product,setProduct,'currency')}
- <label className="field">Active<input type="checkbox" checked={!!product.is_active} onChange={e=>setProduct({...product,is_active:e.target.checked})}/></label>
- </div><label className="field">Description<textarea value={product.description||''} onChange={e=>setProduct({...product,description:e.target.value})}/></label>
- <h3>Categories</h3>{categorySelectionError&&<p role="alert" className="error">{categorySelectionError}</p>}<div style={{display:'grid',gridTemplateColumns:'minmax(0,1fr)',gap:8}}>{categoryTree.map(c=><label key={c.id} style={{paddingInlineStart:c._depth*20}}><input type="checkbox" disabled={busy||(!categoryAssignable(c)&&!product.category_ids.includes(c.id))} checked={product.category_ids.includes(c.id)} onChange={e=>{const ids=e.target.checked?[...product.category_ids,c.id]:product.category_ids.filter((id:string)=>id!==c.id);setProduct({...product,category_ids:ids,primary_category_id:ids.includes(product.primary_category_id)?product.primary_category_id:''});}}/> {c.name}<small style={{display:'block'}}>{c._path} ({c.slug}){!c.is_active?' · inactive':''}{c.allow_direct_products===false?' · group only':c.allow_direct_products!==true?' · policy unavailable':''}</small></label>)}</div>
- {product.category_ids.filter((id:string)=>!categoryTree.some(c=>c.id===id)).map((id:string)=><p key={id}>Unavailable category: {id} <button type="button" disabled={busy} onClick={()=>setProduct({...product,category_ids:product.category_ids.filter((selected:string)=>selected!==id),primary_category_id:product.primary_category_id===id?'':product.primary_category_id})}>Remove assignment</button></p>)}
- <label className="field">Primary category<select value={product.primary_category_id||''} onChange={e=>setProduct({...product,primary_category_id:e.target.value})}><option value="">Not selected (draft only)</option>{product.primary_category_id&&!categoryTree.some(c=>c.id===product.primary_category_id&&product.category_ids.includes(c.id)&&categoryAssignable(c))&&<option disabled value={product.primary_category_id}>Current primary unavailable — choose another or clear</option>}{categoryTree.filter(c=>product.category_ids.includes(c.id)&&categoryAssignable(c)).map(c=><option key={c.id} value={c.id}>{c._path} ({c.slug})</option>)}</select></label>
- <p>Default breadcrumb (direct visit): Home → {product.primary_category_id?categoryPath(product.primary_category_id,categories):'[primary category required]'} → {product.name||'[product name]'}</p>
- <h3>{product.product_kind==='fixture'?'Fixture':'Light'} specifications</h3><div className="grid">
- <label className="field">{product.product_kind==='fixture'?'Fixture':'Light'} type *<select required value={product.specs[product.product_kind==='fixture'?'fixture_type_id':'light_type_id']||''} onChange={e=>changeSpec(product.product_kind==='fixture'?'fixture_type_id':'light_type_id',e.target.value)}><option value="">Select</option>{(masters[product.product_kind==='fixture'?'fixture-types':'light-types']||[]).map(t=><option disabled={!t.is_active} key={t.id} value={t.id}>{t.name} ({t.code})</option>)}</select></label>
- {product.product_kind==='fixture'?<label className="field">Light source mode<select value={product.specs.light_source_mode} onChange={e=>{const next=e.target.value;if(!window.confirm('Change light-source mode? Integrated specifications are cleared when switching to Replaceable. Remove socket groups explicitly before switching to Integrated.'))return;setProduct({...product,mode_change_confirmed:true,specs:{...product.specs,light_source_mode:next,...(next==='replaceable'?{inbuilt_specs:{}}:{})}});if(next==='replaceable')setInbuiltText('{}');}}>{['replaceable','integrated','hybrid'].map(x=><option key={x} value={x}>{x.charAt(0).toUpperCase()+x.slice(1)}</option>)}</select></label>:null}
- {(product.product_kind==='fixture'?['material','style','mounting_type','width_mm','depth_mm','height_mm']:['wattage','lumens','color_temperature_k','voltage_min','voltage_max','diameter_mm','length_mm']).map(f=><label key={f} className="field">{label(f)}<input type={['material','style','mounting_type'].includes(f)?'text':'number'} step="any" value={product.specs[f]??''} onChange={e=>changeSpec(f,e.target.value)}/></label>)}
- {product.product_kind==='light'?<label className="field">Dimmable<select value={product.specs.dimmable===null||product.specs.dimmable===undefined?'unknown':String(product.specs.dimmable)} onChange={e=>changeSpec('dimmable',e.target.value==='unknown'?null:e.target.value==='true')}><option value="unknown">Unknown</option><option value="true">Yes</option><option value="false">No</option></select></label>:null}
- </div><p>Dimensions: mm · Wattage: W · Colour temperature: K · Voltage: V. Leave unknown technical values blank.</p>
- <label className="field">Additional specifications (JSON object)<textarea value={otherSpecText} onChange={e=>setOtherSpecText(e.target.value)}/></label>
- {product.product_kind==='fixture'&&(product.specs.light_source_mode!=='replaceable'||inbuiltText.trim()!=='{}')&&<label className="field">Integrated specifications (JSON)<textarea value={inbuiltText} onChange={e=>setInbuiltText(e.target.value)}/></label>}
- <button disabled={busy||!!categoryState.error||!!categorySelectionError} type="submit">{busy?'Working…':'Save draft'}</button><button type="button" disabled={busy} onClick={()=>void cancelEdit()}>Cancel</button>{product.id&&<p>Revision {product.revision}; saving resets approval/publication to draft.</p>}
- </fieldset></form>
-:<>
- {productPanel==='overview'&&<ProductAdminView product={product} masters={masters} listings={listings} onEdit={beginEdit} onPreview={()=>setPreviewOpen(true)}/>}
- {previewOpen&&productPanel==='overview'&&<ProductPreview productId={product.id} revision={product.revision} onClose={()=>setPreviewOpen(false)} onEdit={beginEdit}/>}
- {productPanel==='configuration'&&product.id&&<ProductConfigurationPanel product={product} lightTypes={masters['light-types']||[]} onReload={async()=>{await editProduct(product.id);}}/>}
- {productPanel==='dealers'&&<> {product.id&&<section className="panel"><h2>Dealers for {product.sku}</h2>
- <form onSubmit={e=>{e.preventDefault();void performWrite(async()=>{await api('/products/'+product.id+'/dealers','POST',attach);setListings((await api('/products/'+product.id+'/dealers')).listings);setNotice('Dealer attached/updated.');});}}><div className="grid"><label className="field">Dealer<select required value={attach.dealer_id} onChange={e=>setAttach({...attach,dealer_id:e.target.value})}><option value="">Select dealer</option>{(masters.dealers||[]).filter(d=>d.is_active).map(d=><option key={d.id} value={d.id}>{d.name} ({d.dealer_code})</option>)}</select></label>{field(attach,setAttach,'dealer_sku')}{field(attach,setAttach,'minimum_order_qty','number')}{field(attach,setAttach,'lead_time_days','number')}</div><button disabled={busy}>Attach / update</button></form>
- <table><thead><tr><th>Dealer</th><th>Dealer SKU</th><th>Current INR quote</th><th/></tr></thead><tbody>{listings.map(l=><tr key={l.id}><td>{l.dealer_name}</td><td>{l.dealer_sku}</td><td>{l.net_price??'Not quoted'} {l.price_basis||''}</td><td><button disabled={busy} onClick={()=>void perform(async()=>{setQuote({...quote,listing_id:l.id});setHistory((await api('/dealer-listings/'+l.id+'/prices')).prices);})}>Quote / history</button></td></tr>)}</tbody></table>
- {quote.listing_id&&<><h3>New quote: {listings.find(l=>l.id===quote.listing_id)?.dealer_name}</h3><form onSubmit={e=>{e.preventDefault();void performWrite(async()=>{await api('/dealer-listings/'+quote.listing_id+'/prices','POST',quote);setListings((await api('/products/'+product.id+'/dealers')).listings);setHistory((await api('/dealer-listings/'+quote.listing_id+'/prices')).prices);setNotice('New effective price recorded; earlier quote retained.');});}}><div className="grid">{field(quote,setQuote,'list_price','number')}{field(quote,setQuote,'discount_percent','number')}{field(quote,setQuote,'currency')}{field(quote,setQuote,'tax_percent','number')}<label className="field">Price basis<select value={quote.price_basis} onChange={e=>setQuote({...quote,price_basis:e.target.value})}><option value="tax_exclusive">Tax exclusive</option><option value="tax_inclusive">Tax inclusive</option></select></label></div><p>Net price is calculated on the server. New quote starts now; scheduled and tiered offers are not supported here.</p><button disabled={busy}>Record price</button></form>
- <div className="scroll"><table><thead><tr><th>Currency</th><th>List</th><th>Discount %</th><th>Net</th><th>Basis</th><th>From</th><th>To</th></tr></thead><tbody>{history.map(h=><tr key={h.id}><td>{h.currency}</td><td>{h.list_price}</td><td>{h.discount_percent}</td><td>{h.net_price}</td><td>{h.price_basis}</td><td>{h.valid_from}</td><td>{h.valid_to||'Open'}</td></tr>)}</tbody></table></div></>}
- </section>}</>}
- {productPanel==='review'&&product.id&&<ProductReviewPanel key={product.id} mode="product" productId={product.id} productRevision={product.revision} parentBusy={busy} onBusyChange={setReviewBusy} onChanged={changedSelected} onOpenProduct={(id,view)=>openProduct(id,view?'view':'edit')}/>}
- </>}
- </>}
- </>}
- </>}
-
- </main>;
+ {workspace==='reference'&&<><nav aria-label="Reference data">{tabs.map(t=><button key={t} disabled={busy} aria-pressed={tab===t} onClick={()=>switchTab(t)}>{label(t)}</button>)}</nav><section className="panel"><h2>{label(tab)}</h2><button disabled={busy} onClick={e=>openMaster(null,e.currentTarget)}>New record</button><div className="scroll"><table><thead><tr><th>Code / slug</th><th>Name</th><th>Active</th>{tab==='categories'&&<th>Direct products</th>}<th/></tr></thead><tbody>
+ {masterOpen&&!master.id&&<InlineEditorRow columns={tab==='categories'?5:4} label="New reference editor">{referenceEditor()}</InlineEditorRow>}
+ {referenceRows.map(m=><Fragment key={m.id}><tr><td>{m.slug||m.dealer_code||m.code}</td><td style={tab==='categories'?{paddingInlineStart:12+m._depth*20}:undefined}>{m.name}{tab==='categories'&&<small style={{display:'block'}}>{m._path}</small>}</td><td>{m.is_active?'Yes':'No'}</td>{tab==='categories'&&<td>{m.allow_direct_products===true?'Allowed':m.allow_direct_products===false?'Group only':'Unavailable'}</td>}<td><button disabled={busy} aria-expanded={masterOpen&&master.id===m.id} onClick={e=>openMaster(m,e.currentTarget)}>Edit</button></td></tr>{masterOpen&&master.id===m.id&&<InlineEditorRow columns={tab==='categories'?5:4} label="Reference editor">{referenceEditor()}</InlineEditorRow>}</Fragment>)}
+ </tbody></table></div></section></>}
+ {workspace==='products'&&<>{productMode!=='view'?<section className="panel"><h2>Products</h2><div className="actions"><input aria-label="SKU or name search" value={search} disabled={busy||productMode==='edit'} onChange={e=>setSearch(e.target.value)}/><button disabled={busy||readBusy||productMode==='edit'} onClick={()=>void perform(refresh)}>Search</button><button disabled={busy||readBusy} onClick={e=>newProduct(e.currentTarget)}>New product</button></div><p>Up to 200 products. Close the current editor before changing the search.</p><div className="scroll"><table><thead><tr><th>SKU</th><th>Name</th><th>Kind</th><th>Review status</th><th>Publication / customer visibility</th><th>Actions</th></tr></thead><tbody>
+ {productMode==='edit'&&!product.id&&<InlineEditorRow columns={6} label="New product editor">{productEditor()}</InlineEditorRow>}
+ {productRows.map(p=><Fragment key={p.id}><tr><td>{p.sku}</td><td>{p.name}</td><td>{p.product_kind}</td><td>{p.review_status||'draft'}</td><td><ProductVisibility compact visibility={p.visibility} disabled={busy||readBusy} onReview={()=>void openProduct(p.id,'view','review')}/></td><td><button disabled={busy||readBusy} onClick={e=>void openProduct(p.id,'view','overview',e.currentTarget)}>View</button><button disabled={busy||readBusy} aria-expanded={productMode==='edit'&&product.id===p.id} onClick={e=>void openProduct(p.id,'edit','overview',e.currentTarget)}>Edit</button></td></tr>{productMode==='edit'&&product.id===p.id&&<InlineEditorRow columns={6} label="Product editor">{productEditor()}</InlineEditorRow>}</Fragment>)}
+ </tbody></table></div></section>:<><section className="panel"><button disabled={busy||reviewBusy} onClick={closeProduct}>Back to Products</button><h2>{product.sku} — {product.name}</h2><p>Revision {product.revision} · {product.review_status}</p><ProductVisibility visibility={product.visibility} disabled={busy||readBusy||reviewBusy} onReview={()=>void openProduct(product.id,'view','review')}/><nav aria-label="Selected product sections">{(['overview','configuration','dealers','review'] as ProductPanel[]).map(p=><button key={p} disabled={busy||reviewBusy} aria-pressed={productPanel===p} onClick={()=>{setProductPanel(p);setPreviewOpen(false);}}>{p==='overview'?'Admin view':p==='configuration'?'Manage media / light configuration':p==='dealers'?'Manage dealer listings':'Review & publication'}</button>)}</nav></section>
+ {productPanel==='overview'&&<ProductAdminView product={product} masters={masters} listings={listings} onEdit={()=>void openProduct(product.id,'edit')} onPreview={()=>setPreviewOpen(true)}/>}{previewOpen&&productPanel==='overview'&&<ProductPreview productId={product.id} revision={product.revision} onClose={()=>setPreviewOpen(false)} onEdit={()=>void openProduct(product.id,'edit')}/>}
+ {productPanel==='configuration'&&<ProductConfigurationPanel product={product} lightTypes={masters['light-types']||[]} onReload={async()=>{await editProduct(product.id);}}/>}
+ <div hidden={productPanel!=='dealers'}><CatalogueDealerPanel key={product.id} product={product} listings={listings} dealers={masters.dealers||[]} busy={busy} api={api} write={performWrite} read={fn=>perform(fn)} onListings={setListings}/></div>
+ {productPanel==='review'&&<ProductReviewPanel key={product.id} mode="product" productId={product.id} productRevision={product.revision} parentBusy={busy} onBusyChange={setReviewBusy} onChanged={changedSelected} onOpenProduct={(id,view)=>openProduct(id,view?'view':'edit')}/>}
+ </>}</>}
+ </>}</main>;
 }
