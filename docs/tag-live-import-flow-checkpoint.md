@@ -1,0 +1,13 @@
+# Existing Bulk import tab: v2 live-flow wiring
+
+Base: release d4298232a0e82c695a4207d334c375393d6f8f5e.
+
+Replaces the CatalogueImportPanel already rendered by CatalogueManager. V2 is the default explicit format in the existing Bulk import tab, not a separate page. Template/upload/reload/commit all stay on the selected job's route. Legacy workbooks remain an explicit choice; no error or activation failure falls back to legacy. Production UI wiring is not database activation: v2 upload/commit require both import and manual-product readiness responses. Missing prerequisites/activation show disabled controls. Template download remains available. No SQL or marker is installed here.
+
+V2 preview now loads existing assignments in one bounded batch under the shared writer transaction and stores labelled additions/removals, mode and retained count per product. Preserve/merge/replace and empty replacement are explicit. UI blocks old v2 previews without deltas. Product revisions/reference fingerprints remain the commit authority; displayed deltas are not a substitute for commit revalidation.
+
+The live tab displays row errors, expected revisions, tag deltas and an explicit update replacement checkbox. It retains only format/job ID in sessionStorage, restores through owner-checked GET, and recovers committed results from stored rows. Uncertain commit outcomes prevent creating/replacing a job until reconciled; retries use the same job/token. File/format/mode changes require preview discard confirmation. Duplicate submission is locked. Successful commit plus failed list refresh is reported without reimport. The existing navigation guard protects external navigation; CatalogueManager keeps the import panel mounted across workspaces. V2 results link to the tag editor; legacy View callbacks no longer set importBusy before trying to navigate.
+
+Validation: 22 isolated Node tests passed (15 format/recovery/commit UI-model tests and 7 diff/batch protocol tests). Three JavaScript syntax checks passed. Diff tests use extracted shared targetTags/fail functions and mocked SQL; no PostgreSQL execution. TSX compiler/parser, React/browser flow, full repository suites, production build, real Excel upload/writer/DB integration, live deployment and CI results are still unverified. Existing HTTP tests remain part of CI but are not claimed passing. Full frontend build and authenticated acceptance are required before declaring the live upload usable.
+
+No database/schema/activation, main, customer filter, media, wishlist or compatibility changes. The previously pending publication SQL remains unapplied. This is live-tab code integration, not evidence that v2 product writes are already enabled in production.

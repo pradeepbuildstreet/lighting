@@ -1,0 +1,10 @@
+"use strict";
+const test=require('node:test'),A=require('node:assert/strict'),D=require('../services/catalogue-tag-import-diff');
+const before=[{id:'old',name:'Old',tag_group_id:'g',group_name:'Material'}],refs={groups:[{id:'g',name:'Material'}],tags:[{id:'new',name:'Brass',tag_group_id:'g'}]};
+test('replace shows additions and removals',()=>{const d=D.tagChanges(before,{tag_mode:'replace',tag_ids:['new']},refs);A.equal(d.added[0].name,'Brass');A.equal(d.removed[0].id,'old');});
+test('merge only adds',()=>{const d=D.tagChanges(before,{tag_mode:'merge',tag_ids:['new']},refs);A.equal(d.removed.length,0);A.equal(d.preserved_count,1);});
+test('preserve retains existing assignments',()=>{const d=D.tagChanges(before,{tag_mode:'preserve',tag_ids:[]},refs);A.equal(d.added.length,0);A.equal(d.removed.length,0);A.equal(d.preserved_count,1);});
+test('explicit empty replace clears tags',()=>A.equal(D.tagChanges(before,{tag_mode:'replace',tag_ids:[]},refs).removed.length,1));
+test('create labels its new tags',()=>A.equal(D.tagChanges([],{tag_mode:'replace',tag_ids:['new']},refs).added[0].group_name,'Material'));
+test('empty existing set skips SQL',async()=>A.equal((await D.loadTagAssignments({query:()=>{throw Error('unexpected');}},[])).size,0));
+test('assignments loaded in one bounded batch',async()=>{const calls=[];const m=await D.loadTagAssignments({query:async(s,a)=>{calls.push([s,a]);return {rows:[{...before[0],product_id:'p'}]};}},['p']);A.equal(calls.length,1);A.deepEqual(calls[0][1],[['p']]);A.match(calls[0][0],/LIMIT 200001/);A.equal(m.get('p')[0].id,'old');});
