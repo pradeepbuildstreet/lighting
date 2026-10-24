@@ -1,0 +1,13 @@
+import test from 'node:test';
+import A from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+const read=n=>readFileSync(new URL('../app/admin/catalogue/'+n,import.meta.url),'utf8');
+const row=read('InlineEditorRow.tsx'),reference=read('CatalogueReferenceForm.tsx'),product=read('CatalogueProductForm.tsx');
+test('inline editor uses a spanning table cell',()=>{A.match(row,/<tr><td colSpan=\{columns\}>/);A.match(row,/tabIndex=\{-1\}/);});
+test('inline editor scrolls and focuses on mount',()=>{A.match(row,/scrollIntoView/);A.match(row,/focus\(\{preventScroll:true\}\)/);A.match(row,/useEffect/);});
+test('forms delegate saves instead of introducing new API routes',()=>{for(const s of [reference,product]){A.match(s,/onSave/);A.match(s,/onCancel/);A.doesNotMatch(s,/fetch\(/);}});
+test('reference categories retain hierarchy-safe parent choices',()=>{A.match(reference,/categoryParentChoices\(categories,draft.id\)/);A.match(reference,/allow_direct_products/);});
+test('reference forms retain dealer and light-type fields',()=>{for(const k of ['dealer_code','contact_person','phone','email','gstin','address','base_type','technology'])A.ok(reference.includes(k));});
+test('legacy product identity and revision remain visible',()=>{A.match(product,/disabled=\{!!p.id\}/);A.match(product,/p.revision/);});
+test('legacy compatibility and JSON controls remain',()=>{for(const k of ['light_source_mode','voltage_min','voltage_max','dimmable','Integrated specifications','Additional specifications'])A.ok(product.includes(k));});
+test('invalid category assignment can still be removed',()=>{A.match(product,/Remove assignment/);A.match(product,/categoryAssignable/);A.match(product,/categoryError/);});
