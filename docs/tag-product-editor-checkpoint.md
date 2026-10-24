@@ -1,0 +1,15 @@
+# Activation-gated tag product editor checkpoint
+
+Base: release c6d655b0c1ac538feb537a630cba87eda47552d6.
+
+New screen: /admin/catalogue/tag-products, linked from the existing catalogue page and wrapped in AdminShell. This is a separately staged v2 editor, not replacement of CatalogueManager. Legacy media/dealer/review workflows remain reachable. It only calls products-v2 for detail/create/update and has no legacy-save fallback. State is fail-closed on load errors; detail/new/save controls require server readiness. No activation or SQL application occurs.
+
+The editor uses active reference kinds, immutable saved kind selection, optional mm dimensions, fixture replaceable/hybrid source mode, and watts/lumens only for light-source profiles. It omits retired structured inputs and their validation entirely. Existing technical compatibility data is not removed or reinterpreted. Legacy products without product_attributes are explicitly rejected rather than implicitly converted.
+
+Group and tag prefix searches are debounced and bounded to 50 results; kind searches to 100. Narrow searches to reach additional vocabulary. Selected tags are removable chips; inactive saved assignments remain visible for removal. Applicable filter versus informational sections use active local groups from assigned eligible direct-product categories, not parent listing unions. Applicability failure blocks saving. Requests ignore stale search/applicability responses. A saved editor is placed below its selected list row; new drafts appear above the list.
+
+Saves send a whitelisted v2 envelope, exact revision strings, full common/category replacement and explicit tag replacement (including clearing the final tag). Server validation remains authoritative. Conflicts or uncertain write errors block retries pending reload/reconciliation; drafts remain visible and no silent overwrite occurs. Save uses a duplicate-submit lock and existing unsaved-navigation guard. No automatic audit/review/publication. Categories require active ancestry and direct-product eligibility; limits are 30 categories/200 tags. Existing legacy product list/bootstrap reads are used; category options are not virtualised. End-to-end/page performance is unmeasured.
+
+Validation: 23 real Node model tests passed and the model JavaScript syntax check passed. TypeScript compiler and TSX parser were unavailable in the sandbox: TSX syntax/type checking, React DOM/interactions, production Next build, mounted authentication/HTTP, database integration, stale-request/browser timing, accessibility and live acceptance have NOT been verified. This must not be described as a production-build-tested editor. The selected module declaration follows the repository .mjs/.d.mts pattern.
+
+The current live catalogue editor is not automatically switched, and existing product admin read-only views/previews remain legacy-oriented. Full UI cutover, complete build/acceptance, v2 upload UI and review evidence UI remain pending, as do pending SQL validation/application and coordinated activation. Main, backend, wishlist and media code are unchanged by this patch.
