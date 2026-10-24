@@ -1,7 +1,9 @@
 {
-  "reason": "User-requested retry of release auto-build/deployment",
-  "source_commit": "3b164308c735f9770161f65c9fb94903da4e35ec",
-  "requested_at_local": "2026-10-24 23:51 IST",
+  "reason": "User requested release auto-build/deployment after approving tag-group and tag administration",
+  "source_commit": "06442c0148f0d83e902a4e77e3a29f49b564971c",
+  "requested_at_local": "2026-10-25 00:00 IST",
+  "user_accepted_scope": "Tag-group and tag reference administration only",
   "application_changes": false,
-  "database_changes": false
+  "database_changes": false,
+  "activation_changes": false
 }
