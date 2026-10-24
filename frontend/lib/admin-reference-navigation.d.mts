@@ -1,3 +1,9 @@
 export type ReferenceSection='tag-groups'|'tags'|'product-kinds'|'categories'|'global';
+export type CatalogueReferenceTab='categories'|'tag-groups'|'tags'|'product-kinds'|'category-tag-groups'|'global-tag-groups'|'fixture-types'|'light-types'|'dealers';
 export function referenceSection(value:unknown):ReferenceSection;
+export const referenceTabs:CatalogueReferenceTab[];
+export function catalogueReferenceTab(value:unknown):CatalogueReferenceTab;
+export function taxonomySectionForTab(value:unknown):ReferenceSection|null;
+export function catalogueTabForTaxonomy(value:unknown):CatalogueReferenceTab;
+export function referenceLabel(value:string):string;
 export const referenceLinks:{key:string;label:string;href:string}[];

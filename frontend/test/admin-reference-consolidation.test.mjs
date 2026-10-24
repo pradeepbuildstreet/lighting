@@ -1,0 +1,10 @@
+import test from 'node:test';
+import A from 'node:assert/strict';
+import {referenceTabs,catalogueReferenceTab,taxonomySectionForTab,catalogueTabForTaxonomy,referenceLabel} from '../lib/admin-reference-navigation.mjs';
+for(const value of ['tag-groups','tags','product-kinds'])test('reference submenu embeds '+value,()=>{A.ok(referenceTabs.includes(value));A.equal(taxonomySectionForTab(catalogueReferenceTab(value)),value);});
+test('category data and category filter configuration stay distinct',()=>{A.equal(taxonomySectionForTab('categories'),null);A.equal(taxonomySectionForTab('category-tag-groups'),'categories');A.equal(catalogueTabForTaxonomy('categories'),'category-tag-groups');});
+test('old global link resolves to unified reference workspace',()=>A.equal(catalogueTabForTaxonomy('global'),'global-tag-groups'));
+test('old tag links resolve to the same tab',()=>{A.equal(catalogueTabForTaxonomy('tag-groups'),'tag-groups');A.equal(catalogueTabForTaxonomy('tags'),'tags');});
+for(const v of [undefined,null,'unknown',['tags'],'__proto__'])test('invalid reference selection fails safely '+String(v),()=>A.equal(catalogueReferenceTab(v),'categories'));
+test('all submenu identities and labels are unique',()=>{A.equal(new Set(referenceTabs).size,referenceTabs.length);A.equal(new Set(referenceTabs.map(referenceLabel)).size,referenceTabs.length);});
+test('legacy references do not mount taxonomy editors',()=>{for(const v of ['fixture-types','light-types','dealers'])A.equal(taxonomySectionForTab(v),null);});
