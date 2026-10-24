@@ -1,0 +1,91 @@
+name: Tag integration verification
+on:
+  push:
+    branches: [release, main]
+  pull_request:
+    branches: [release, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: tag-verification-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+defaults:
+  run:
+    shell: bash
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install locked backend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Require actual XLSX dependency
+        run: node -e "require('exceljs'); console.log('ExcelJS available for real workbook roundtrip tests')"
+      - name: Run complete backend test suite including HTTP protocol tests
+        id: tests
+        run: npm test 2>&1 | tee backend-tests.log
+      - name: Retain backend test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tag-backend-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: backend/backend-tests.log
+          if-no-files-found: warn
+          retention-days: 7
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      INTERNAL_API_ORIGIN: http://127.0.0.1:3000
+      SITE_URL: http://127.0.0.1:3001
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3001
+      LOCAL_BUILD: 'true'
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked frontend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Run frontend model and forwarding tests
+        id: tests
+        run: node --test test/*.test.mjs tests/*.test.cjs 2>&1 | tee frontend-tests.log
+      - name: Type-check the frontend including TSX
+        id: types
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: ./node_modules/.bin/tsc --noEmit --incremental false 2>&1 | tee typecheck.log
+      - name: Build production Next application
+        id: build
+        if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
+        run: npm run build 2>&1 | tee build.log
+      - name: Retain frontend verification logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tag-frontend-verification-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            frontend/frontend-tests.log
+            frontend/typecheck.log
+            frontend/build.log
+          if-no-files-found: warn
+          retention-days: 7
