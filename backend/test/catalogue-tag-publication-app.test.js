@@ -1,0 +1,28 @@
+"use strict";
+const test=require('node:test'),A=require('node:assert/strict');
+const {createPublicationService,blockers}=require('../services/catalogue-publication');
+const {visibilityByIds,statusFromRow}=require('../services/catalogue-visibility');
+const id='11111111-1111-4111-8111-111111111111';
+const p={id,product_kind:'integrated-light',tag_model:true,model_prerequisite:true,model_activated:true,revision:2,is_active:true,published:false,selling_price:'0',review_status:'approved',approved_revision:2,approved_by:id,duplicate_of_product_id:null};
+const audit={status:'completed',product_revision:2,corpus_digest:'recorded',algorithm_version:'tags-evidence-v2'},review={decision:'approve_distinct',reviewer_id:id};
+const facts={tagModel:true,modelPrerequisite:true,modelActivated:true,activeSpecType:true,primaryCategory:true,primaryImage:true,audit,review};
+function fixture(overrides={},ready=true){const product={...p,...overrides},calls=[];const query=async(s,a)=>{calls.push([s,a]);if(s.startsWith('SELECT p.*')||s.startsWith('SELECT * FROM products'))return {rows:[product]};if(/^SELECT (c.id FROM product_categories|id FROM product_media|t.id FROM)/.test(s))return {rows:[{id}]};if(s.startsWith('SELECT public.catalogue_product_model_ready'))return {rows:[{ready}]};if(s.startsWith('SELECT * FROM product_duplicate_audits'))return {rows:[audit]};if(s.startsWith('SELECT * FROM product_duplicate_reviews'))return {rows:[review]};if(s.startsWith('UPDATE products'))return {rows:[{...product,published:a[1]}]};return {rows:[]};};return {calls,service:createPublicationService({transaction:f=>f({query}),actor:async()=>{}})};}
+const writes=f=>f.calls.some(([s])=>s.startsWith('UPDATE products')),helper=f=>f.calls.some(([s])=>s.startsWith('SELECT public.catalogue_product_model_ready'));
+test('eligible tag model',()=>A.deepEqual(blockers(p,facts),[]));
+for(const key of ['modelPrerequisite','modelActivated','activeSpecType'])test('blocks absent '+key,()=>A.ok(blockers(p,{...facts,[key]:false}).length));
+test('old algorithm blocked',()=>A.ok(blockers(p,{...facts,audit:{...audit,algorithm_version:'old'}}).length));
+for(const [k,v] of [['is_active',false],['selling_price',null],['approved_revision',1],['duplicate_of_product_id',id]])test('preserves '+k,()=>A.ok(blockers({...p,[k]:v},facts).length));
+test('completed approval stable after corpus changes',()=>A.deepEqual(blockers(p,{...facts,digest:'changed'}),[]));
+test('tag publish uses shared rule, not legacy specs',async()=>{const f=fixture();A.equal((await f.service.set({id},id,2,true)).product.published,true);A.ok(helper(f));A.ok(!f.calls.some(([s])=>/FROM (fixture_specs|light_specs)/.test(s)));});
+for(const key of ['model_prerequisite','model_activated'])test('missing '+key+' prevents helper and writes',async()=>{const f=fixture({[key]:false});await A.rejects(f.service.set({id},id,2,true),e=>e.status===409);A.ok(!helper(f)&&!writes(f));});
+test('failed model rule prevents writes',async()=>{const f=fixture({},false);await A.rejects(f.service.set({id},id,2,true),e=>e.status===409);A.ok(!writes(f));});
+test('unpublish bypasses prerequisites',async()=>{const f=fixture({model_prerequisite:false,model_activated:false});A.equal((await f.service.set({id},id,2,false)).product.published,false);A.ok(!helper(f)&&!f.calls.some(([s])=>s.includes('to_regprocedure')));});
+test('legacy fixture remains supported',async()=>{const f=fixture({product_kind:'fixture',tag_model:false,model_prerequisite:false,model_activated:false});A.equal((await f.service.set({id},id,2,true)).product.published,true);A.ok(f.calls.some(([s])=>s.includes('FROM fixture_specs')));});
+test('lock order matches writer',async()=>{const f=fixture();await f.service.set({id},id,2,true);A.match(f.calls[0][0],/8102401/);A.match(f.calls[1][0],/8102403/);});
+const row={id,active_ok:true,published_ok:true,review_ok:true,revision_ok:true,not_duplicate_ok:true,price_ok:true,duplicate_approval_ok:true,primary_category_ok:true,primary_image_ok:true,product_type_spec_ok:true,category_tree_ok:true,in_public_view:true};
+test('tag visibility fails closed without prerequisites',()=>{const s=statusFromRow({...row,tag_model:true});A.equal(s.visible,false);A.equal(s.reasons.length,2);A.ok(!s.reasons.some(x=>x.includes('fixture/light')));});
+test('public view is still required',()=>A.equal(statusFromRow({...row,tag_model:true,model_prerequisite:true,model_activated:true,in_public_view:false}).visible,false));
+test('view cannot override invalid approval',()=>A.equal(statusFromRow({...row,duplicate_approval_ok:false}).visible,false));
+test('eligible activated tag visibility',()=>A.equal(statusFromRow({...row,tag_model:true,model_prerequisite:true,model_activated:true}).visible,true));
+for(const installed of [false,true])test('visibility SQL helper installed='+installed,async()=>{const calls=[];await visibilityByIds({query:async(s,a)=>{calls.push([s,a]);return {rows:calls.length===1?[{installed,activated:false}]:[]};}},[id]);A.equal(calls.length,2);A.deepEqual(calls[1][1],[[id]]);A.equal(calls[1][0].includes('public.catalogue_product_model_ready(p.id,p.product_kind)'),installed);A.doesNotMatch(calls[1][0],/\b(INSERT|UPDATE|DELETE|ALTER)\b/i);});
+test('empty batch skips SQL',async()=>A.equal((await visibilityByIds({query:()=>{throw Error('unexpected');}},[])).size,0));

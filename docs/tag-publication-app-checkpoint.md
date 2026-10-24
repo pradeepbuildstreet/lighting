@@ -1,0 +1,11 @@
+# Application tag publication/readiness/visibility checkpoint
+
+Base: release b135d0628deb59a65ab0bf25ea892dba08766c15.
+
+Publication detects persisted attributes/tags or non-legacy kind codes, discovers the SQL prerequisite with to_regprocedure, and checks activation version 3. It never invokes a missing helper. Tag publication requires the shared catalogue_product_model_ready result and current tags-evidence-v2 evidence alongside existing approval/revision/reviewer, price, category and image safeguards. Legacy fixture/light products retain specification checks. Completed approvals do not gain a global corpus rescan requirement. Readiness returns product_model metadata and explicit prerequisite/activation blockers. Unpublish skips model prerequisites but retains revision checks. Lock order is 8102401 then 8102403.
+
+Visibility makes one uncached schema-discovery read plus one parameterized batch read, not a query per product. Without the helper, tag visibility fails closed without calling it. With the helper, eligibility uses the shared rule. The public view and all eligibility checks must pass. Empty batches skip SQL. Callers needing snapshot consistency must use a transaction; readiness uses REPEATABLE READ READ ONLY. The extra read has not been performance-measured.
+
+Validation: 50 isolated Node tests passed (24 new tag tests, 17 existing publication tests, 9 visibility tests with the batch expectation updated). Four JavaScript syntax checks passed. SQL is mocked; sandbox dependencies use extracted validator functions and a compatibility-warning stub. Committed tests use repository dependencies normally. Real PostgreSQL, row locks, helper execution, HTTP, full repository regression/build, concurrency and live acceptance remain unverified.
+
+No migration or activation occurs in this push. Pending publication SQL remains unapplied. Installed reference/storage tables are required. Compatibility-warning implementation, main, media and wishlist code are unchanged. Manual writer/editor, upload/review UI, public-catalogue kind assumptions and customer filters remain pending. Validate application and SQL together on a representative test database before production migration; activation remains a separate coordinated approval.
