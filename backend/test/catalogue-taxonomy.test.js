@@ -1,0 +1,34 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict'),C=require('../services/catalogue-taxonomy-core');
+const id='11111111-1111-4111-8111-111111111111';
+const category=(id,parent_id=null,extra={})=>({id,parent_id,name:id,is_active:true,allow_direct_products:true,...extra});
+const mapping=(category_id,tag_group_id,extra={})=>({category_id,tag_group_id,group_name:tag_group_id,group_code:tag_group_id,group_sort_order:0,group_active:true,...extra});
+test('pagination defaults and limits',()=>{assert.equal(C.pagination().limit,50);assert.throws(()=>C.pagination({limit:'101'}));});
+test('search wildcard escaped',()=>assert.equal(C.pagination({q:'100%_'}).prefix,String.raw`100\%\_%`));
+test('record names normalized',()=>assert.equal(C.record('tag-groups',{code:'material',name:'  Base   material '}).name,'Base material'));
+test('boolean strings rejected',()=>assert.throws(()=>C.record('tag-groups',{code:'a',name:'A',is_active:'false'})));
+test('immutable codes',()=>assert.throws(()=>C.record('tag-groups',{code:'b'},{code:'a',name:'A',is_active:true,sort_order:0})));
+test('tag group cannot change',()=>assert.throws(()=>C.record('tags',{tag_group_id:'22222222-2222-4222-8222-222222222222'},{code:'a',name:'A',tag_group_id:id})));
+test('invalid product-kind profile rejected',()=>assert.throws(()=>C.record('product-kinds',{code:'a',name:'A',entry_profile:'arbitrary'})));
+test('integrated profile accepted',()=>assert.equal(C.record('product-kinds',{code:'integrated',name:'Integrated',entry_profile:'light_source',fixed_source_mode:'integrated'}).fixed_source_mode,'integrated'));
+test('group IDs unique',()=>assert.throws(()=>C.groupIds([id,id])));
+test('configuration payload bounded',()=>assert.throws(()=>C.groupIds(Array(201).fill(id))));
+test('edit token detects stale writes',()=>{const a=C.token({name:'A'}),b=C.token({name:'B'});assert.throws(()=>C.expectToken(a,b),e=>e.status===409);C.expectToken(a,a);});
+test('root direct products permitted',()=>assert.equal(C.categoryScope([category('a')],'a').eligible.has('a'),true));
+test('group-only node uses descendants not its own mappings',()=>{const s=C.categoryScope([category('a',null,{allow_direct_products:false}),category('b','a')],'a');assert.deepEqual(C.derivedGroups(s,[mapping('a','ignored'),mapping('b','material')]).map(g=>g.id),['material']);});
+test('direct node and children contribute',()=>{const s=C.categoryScope([category('a'),category('b','a')],'a');assert.equal(C.derivedGroups(s,[mapping('a','material'),mapping('b','style')]).length,2);});
+test('duplicate groups merged with provenance',()=>{const s=C.categoryScope([category('a'),category('b','a')],'a'),g=C.derivedGroups(s,[mapping('a','material'),mapping('b','material')]);assert.equal(g.length,1);assert.deepEqual(g[0].source_category_ids,['a','b']);});
+test('inactive ancestor suppresses descendant groups',()=>{const s=C.categoryScope([category('a',null,{is_active:false}),category('b','a')],'b');assert.deepEqual(C.derivedGroups(s,[mapping('b','material')]),[]);});
+test('inactive group excluded',()=>{const s=C.categoryScope([category('a')],'a');assert.deepEqual(C.derivedGroups(s,[mapping('a','material',{group_active:false})]),[]);});
+test('unrelated branches excluded',()=>{const s=C.categoryScope([category('a'),category('b')],'a');assert.deepEqual(C.derivedGroups(s,[mapping('b','material')]),[]);});
+test('missing parent fails closed',()=>assert.throws(()=>C.categoryScope([category('a','missing')],'a')));
+test('cycles fail closed',()=>assert.throws(()=>C.categoryScope([category('a','b'),category('b','a')],'a')));
+test('missing category returns 404',()=>assert.throws(()=>C.categoryScope([],id),e=>e.status===404));
+test('sort order deterministic',()=>{const s=C.categoryScope([category('a')],'a');assert.deepEqual(C.derivedGroups(s,[mapping('a','z',{group_sort_order:2}),mapping('a','a',{group_sort_order:1})]).map(g=>g.id),['a','z']);});
+
+const {createTaxonomyService}=require('../services/catalogue-taxonomy');
+function mockService(allow){const calls=[],audits=[];const c={query:async(sql,args)=>{calls.push(sql);if(sql.includes('FROM catalogue_taxonomy_versions'))return {rows:[{version:1}]};if(sql.includes('FROM categories ORDER'))return {rows:[category(id,null,{allow_direct_products:allow})]};if(sql.includes('FROM category_tag_groups'))return {rows:[]};return {rows:[]};}};const db={transaction:fn=>fn(c),actor:async()=>{}};return {service:createTaxonomyService(db,async(...args)=>audits.push(args)),calls,audits};}
+test('service rejects local configuration on group-only node before deleting',async()=>{const {service,calls}=mockService(false),before=await service.groups(id);await assert.rejects(service.saveGroups({id},id,{group_ids:[],edit_token:before.edit_token}),e=>e.status===400);assert.equal(calls.some(sql=>sql.startsWith('DELETE')),false);});
+test('service rejects stale configuration before deleting',async()=>{const {service,calls}=mockService(true);await assert.rejects(service.saveGroups({id},id,{group_ids:[],edit_token:'0'.repeat(64)}),e=>e.status===409);assert.equal(calls.some(sql=>sql.startsWith('DELETE')),false);});
+test('direct configuration clear is audited',async()=>{const {service,audits}=mockService(true),before=await service.groups(id);await service.saveGroups({id},id,{group_ids:[],edit_token:before.edit_token});assert.equal(audits.length,1);assert.deepEqual(audits[0][6],{group_ids:[]});});
+test('prototype names are not registry entries',async()=>{const {service,calls}=mockService(true);await assert.rejects(service.list('toString',{}),e=>e.status===404);assert.equal(calls.length,0);});

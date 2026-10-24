@@ -7,6 +7,7 @@ const products=require('../services/catalogue-products').createProductService(db
 const {audit,detail,writeProduct}=products;
 const {visibilityByIds}=require('../services/catalogue-visibility');
 const router=express.Router();router.use(requireAdmin);
+router.use('/taxonomy',require('./catalogue-taxonomy').createTaxonomyRouter(express,db,audit));
 router.use(require('./catalogue-upload-template').createTemplateRouter(express,db));
 require('./catalogue-review-mount').mountReviewRoutes(router,express,db);
 router.use(require('./catalogue-imports').createImportRouter({express,multer:require('multer'),db,products,parseWorkbook:require('../services/catalogue-workbook').parseWorkbook}));
