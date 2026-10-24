@@ -1,0 +1,7 @@
+{
+  "reason": "User-requested retry of release auto-build/deployment",
+  "source_commit": "3b164308c735f9770161f65c9fb94903da4e35ec",
+  "requested_at_local": "2026-10-24 23:51 IST",
+  "application_changes": false,
+  "database_changes": false
+}
