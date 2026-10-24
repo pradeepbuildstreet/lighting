@@ -1,0 +1,2 @@
+import {referenceLinks} from '@/lib/admin-reference-navigation.mjs';
+export function CatalogueReferenceNavigation(){return <section aria-labelledby="catalogue-reference-navigation"><h2 id="catalogue-reference-navigation">Reference data</h2><nav className="manager-tabs" aria-label="Catalogue reference data">{referenceLinks.map(item=><a key={item.key} href={item.href}>{item.label}</a>)}</nav><p>Choose Tag groups to add a group. Choose Tags, select an active group, then Add tag. Reference management does not require product-tagging activation.</p></section>;}
