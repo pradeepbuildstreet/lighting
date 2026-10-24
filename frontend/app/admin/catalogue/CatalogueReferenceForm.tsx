@@ -1,7 +1,8 @@
 "use client";
 import {categoryParentChoices} from '@/lib/admin-category-hierarchy.mjs';
+import type {HierarchyCategoryRow} from '@/lib/admin-category-hierarchy.mjs';
 type Row=Record<string,any>;
-export default function CatalogueReferenceForm({tab,draft,setDraft,address,setAddress,categories,busy,treeError,onSave,onCancel}:{tab:string;draft:Row;setDraft:(d:Row)=>void;address:string;setAddress:(s:string)=>void;categories:Row[];busy:boolean;treeError:string;onSave:()=>void;onCancel:()=>void}){
+export default function CatalogueReferenceForm({tab,draft,setDraft,address,setAddress,categories,busy,treeError,onSave,onCancel}:{tab:string;draft:Row;setDraft:(d:Row)=>void;address:string;setAddress:(s:string)=>void;categories:HierarchyCategoryRow[];busy:boolean;treeError:string;onSave:()=>void;onCancel:()=>void}){
  const field=(k:string,type='text',disabled=false)=><label className="field" key={k}>{k.replace(/_/g,' ')}<input type={type} value={draft[k]??''} disabled={disabled} onChange={e=>setDraft({...draft,[k]:e.target.value})}/></label>;
  return <form onSubmit={e=>{e.preventDefault();onSave();}}><fieldset disabled={busy}><h2>{draft.id?'Edit':'New'} {tab.replace(/-/g,' ')}</h2><div className="grid">{field(tab==='categories'?'slug':tab==='dealers'?'dealer_code':'code','text',!!draft.id&&tab!=='categories')}{field('name')}
  {tab==='categories'&&<><label className="field">Parent category<select value={draft.parent_id||''} onChange={e=>setDraft({...draft,parent_id:e.target.value})}><option value="">Root</option>{categoryParentChoices(categories,draft.id).map(c=><option key={c.id} value={c.id}>{c._path} ({c.slug})</option>)}</select></label>{field('sort_order','number')}{field('description')}<label className="field">Allow products directly<input type="checkbox" checked={draft.allow_direct_products===true} onChange={e=>setDraft({...draft,allow_direct_products:e.target.checked})}/></label></>}
