@@ -1,7 +1,4 @@
-import type {Metadata} from 'next';
-import {AdminShell} from '@/components/AdminShell';
-import {referenceSection} from '@/lib/admin-reference-navigation.mjs';
-import TaxonomyManager from './TaxonomyManager';
+import {redirect} from 'next/navigation';
+import {catalogueTabForTaxonomy} from '@/lib/admin-reference-navigation.mjs';
 export const dynamic='force-dynamic';
-export const metadata:Metadata={title:'Tag reference data | Luminoza',robots:{index:false,follow:false}};
-export default function TaxonomyPage({searchParams}:{searchParams?:{section?:string|string[]}}){const section=referenceSection(searchParams?.section);return <AdminShell active="taxonomy"><TaxonomyManager key={section} initialTab={section}/></AdminShell>;}
+export default function TaxonomyPage({searchParams}:{searchParams?:{section?:string|string[]}}){const tab=catalogueTabForTaxonomy(searchParams?.section);redirect('/admin/catalogue?workspace=reference&reference='+encodeURIComponent(tab));}
