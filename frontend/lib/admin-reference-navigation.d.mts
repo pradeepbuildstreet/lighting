@@ -5,5 +5,6 @@ export const referenceTabs:CatalogueReferenceTab[];
 export function catalogueReferenceTab(value:unknown):CatalogueReferenceTab;
 export function taxonomySectionForTab(value:unknown):ReferenceSection|null;
 export function catalogueTabForTaxonomy(value:unknown):CatalogueReferenceTab;
+export function referenceDataHref(value:unknown,global?:boolean):string;
 export function referenceLabel(value:string):string;
 export const referenceLinks:{key:string;label:string;href:string}[];
