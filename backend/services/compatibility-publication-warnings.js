@@ -1,4 +1,5 @@
 "use strict";
+const {compatibilityStateByProducts}=require('./catalogue-compatibility-state');
 const unavailable=()=>({status:'unavailable',warnings:['Compatibility status could not be verified. Check the assessment service or migration. This warning does not prevent publication.']});
 function classifyCompatibilityStatus(result){
  if(!result||typeof result!=='object')return unavailable();
@@ -20,14 +21,7 @@ function classifyCompatibilityStatus(result){
  return {status:'current',warnings:[...new Set(warnings)]};
 }
 async function compatibilityPublicationWarnings(product,db,options={}){
- if(!product||product.product_kind!=='fixture')return {status:'not_applicable',warnings:[]};
- try{
-  // Read existing saved status/fingerprint only. Never call run(), assess() or a technical evaluator.
-  const status=options.status||require('./compatibility-assessments').createService({db}).status;
-  return classifyCompatibilityStatus(await status(product.id));
- }catch(error){
-  if(options.log!==false){try{(options.logger||console).warn(JSON.stringify({event:'compatibility_publication_status_unavailable',code:typeof error?.code==='string'?error.code:'STATUS_UNAVAILABLE'}));}catch(_){}}
-  return unavailable();
- }
+ if(!product)return {status:'not_applicable',warnings:[]};
+ return (await compatibilityStateByProducts(db,[product])).get(product.id);
 }
 module.exports={compatibilityPublicationWarnings,classifyCompatibilityStatus};

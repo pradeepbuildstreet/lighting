@@ -1,0 +1,15 @@
+"use strict";
+const test=require('node:test'),A=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {compatibilityStateByProducts:states}=require('../services/catalogue-compatibility-state');
+const {compatibilityPublicationWarnings:publication}=require('../services/compatibility-publication-warnings');
+const {attachCompatibilityVisibilityWarnings:attach}=require('../services/compatibility-visibility-warnings');
+const db=rows=>({query:async(sql,args)=>{A.match(sql,/product_attributes/);A.doesNotMatch(sql,/fixture_specs|light_specs|fixture_types|light_types/);A.ok(Array.isArray(args[0]));return {rows};}});
+test('fixture profile remains unverified regardless of kind code',async()=>{const m=await states(db([{product_id:'p',entry_profile:'fixture',light_source_mode:'replaceable'}]),[{id:'p',product_kind:'chandelier'}]);A.equal(m.get('p').status,'unavailable');A.match(m.get('p').warnings[0],/rebuild/);});
+test('light-source and general profiles are not applicable',async()=>{const m=await states(db([{product_id:'a',entry_profile:'light_source'},{product_id:'b',entry_profile:'general'}]),[{id:'a'},{id:'b'}]);A.equal(m.get('a').status,'not_applicable');A.deepEqual(m.get('b').warnings,[]);});
+test('missing attributes do not fall back to a legacy model',async()=>A.equal((await states(db([]),[{id:'p'}])).get('p').status,'unavailable'));
+test('failed reads cannot certify compatibility',async()=>A.equal((await states({query:async()=>{throw Error('offline');}},[{id:'p'}])).get('p').status,'unavailable'));
+test('empty batch issues no query',async()=>A.equal((await states({query:()=>{throw Error('unexpected');}},[])).size,0));
+test('oversized batches are rejected',async()=>{await A.rejects(states({},Array.from({length:201},(_,i)=>({id:String(i)}))),/At most 200/);});
+test('publication does not invoke a legacy status callback',async()=>{const s=await publication({id:'p'},db([{product_id:'p',entry_profile:'fixture'}]),{status:()=>{throw Error('Legacy engine called');}});A.equal(s.status,'unavailable');});
+test('visibility annotation preserves publication fields',async()=>{const v=new Map([['p',{published:true,customer_visible:true}]]);await attach(db([{product_id:'p',entry_profile:'fixture'}]),[{id:'p'}],v);A.equal(v.get('p').published,true);A.equal(v.get('p').customer_visible,true);A.equal(v.get('p').compatibility_validation.status,'unavailable');});
+test('active warning modules do not import the old assessment engine',()=>{for(const file of ['catalogue-compatibility-state','compatibility-publication-warnings','compatibility-visibility-warnings'])A.doesNotMatch(fs.readFileSync(path.join(__dirname,'../services/'+file+'.js'),'utf8'),/compatibility-assessments|fixture_specs|light_specs|fixture_types|light_types/);});
