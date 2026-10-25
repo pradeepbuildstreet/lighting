@@ -1,0 +1,13 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {createProductService}=require('../services/catalogue-products');
+function client({product={id:'p',product_kind:'fixture',revision:'4'},attributes={product_id:'p',kind_code:'fixture'},tags=[{id:'t'}],categories=[{category_id:'c',is_primary:true}]}={}){
+ const statements=[];return {statements,query:async(sql,args)=>{statements.push({sql,args});if(sql==='SELECT * FROM products WHERE id=$1')return {rows:product?[product]:[]};if(sql.includes('FROM product_attributes'))return {rows:attributes?[attributes]:[]};if(sql.includes('FROM product_tags'))return {rows:tags};if(sql.includes('FROM product_categories'))return {rows:categories};throw Error('Unexpected SQL: '+sql);}};
+}
+test('shared reader hydrates tag attributes, tags and categories without legacy spec queries',async()=>{const c=client(),p=await createProductService({}).detail(c,'p');assert.equal(p.tag_model,true);assert.equal(p.attributes.kind_code,'fixture');assert.deepEqual(p.tag_ids,['t']);assert.deepEqual(p.category_ids,['c']);assert.equal(p.primary_category_id,'c');assert.equal(p.revision,'4');assert.deepEqual(p.specs,{});assert.ok(c.statements.every(x=>!/(fixture_specs|light_specs|fixture_types|light_types)/.test(x.sql)));assert.ok(c.statements.every(x=>x.args[0]==='p'));});
+test('missing product returns 404',async()=>{const c=client({product:null});await assert.rejects(createProductService({}).detail(c,'p'),{status:404});assert.equal(c.statements.length,1);});
+test('attributes are mandatory; no automatic conversion or fallback',async()=>{await assert.rejects(createProductService({}).detail(client({attributes:null}),'p'),{status:409});});
+test('mismatching product kind is rejected',async()=>{await assert.rejects(createProductService({}).detail(client({attributes:{kind_code:'light'}}),'p'),{status:409});});
+test('empty categories and tags stay empty',async()=>{const p=await createProductService({}).detail(client({tags:[],categories:[]}),'p');assert.deepEqual(p.tags,[]);assert.deepEqual(p.category_ids,[]);assert.equal(p.primary_category_id,null);});
+test('legacy writes fail before issuing SQL',async()=>{const db={query:()=>{throw Error('Must not query');},actor:()=>{throw Error('Must not set actor');}};await assert.rejects(createProductService(db).writeProduct(db,{id:'a'},'p',{},'4'),{status:410});});
+test('shared audit writer remains available',async()=>{const calls=[],c={query:async(...args)=>{calls.push(args);}};await createProductService({}).audit(c,{id:'actor'},'products','p','update',null,{id:'p'});assert.equal(calls.length,1);assert.equal(calls[0][1][0],'actor');assert.equal(calls[0][1][4],null);assert.deepEqual(calls[0][1][5],{id:'p'});});
