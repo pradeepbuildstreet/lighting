@@ -1,0 +1,16 @@
+import test from 'node:test';import A from 'node:assert/strict';
+import {cleanListingHref as clean} from '../lib/catalogue-listing-url.mjs';
+test('category defaults disappear',()=>A.equal(clean('/categories/decorative?category=decorative&sort=name&page=1&limit=20'),'/categories/decorative'));
+test('all-products defaults disappear',()=>A.equal(clean('/products?sort=name&page=1&limit=20'),'/products'));
+test('nested category leaf is redundant',()=>A.equal(clean('/categories/decorative/pendant-lights?category=pendant-lights&page=1'),'/categories/decorative/pendant-lights'));
+test('category on all-products listing remains necessary',()=>A.equal(clean('/products?category=decorative&page=1'),'/products?category=decorative'));
+test('conflicting category is not silently erased',()=>A.equal(clean('/categories/decorative?category=solar'),'/categories/decorative?category=solar'));
+test('nondefault pagination and sort retained',()=>A.equal(clean('/products?sort=newest&page=2&limit=50'),'/products?sort=newest&page=2&limit=50'));
+test('search, brand, kind and currency retained',()=>{const href='/products?q=wall+lamp&brand=Acme&kind=fixture&currency=INR';A.equal(clean(href),href);});
+test('price filters retained',()=>A.equal(clean('/products?currency=INR&min_price=0&max_price=500&sort=price_asc'),'/products?currency=INR&min_price=0&max_price=500&sort=price_asc'));
+test('tag selection JSON survives unchanged after URL decoding',()=>{const value=JSON.stringify([{group_id:'11111111-1111-4111-8111-111111111111',tag_ids:[],unclassified:true}]);const href=clean('/categories/decorative?category=decorative&page=1&tag_filters='+encodeURIComponent(value));A.equal(new URL(href,'https://listing.invalid').searchParams.get('tag_filters'),value);});
+test('cleanup is idempotent',()=>{const href=clean('/products?q=a&sort=name&page=1');A.equal(clean(href),href);});
+test('input API parameters are not mutated',()=>{const q=new URLSearchParams('category=decorative&sort=name&page=1&limit=20');const before=q.toString();clean('/categories/decorative?'+q);A.equal(q.toString(),before);});
+test('external URLs are rejected',()=>{for(const h of ['https://evil.invalid/products','//evil.invalid/products'])A.throws(()=>clean(h));});
+test('nonlisting and fragment URLs rejected',()=>{for(const h of ['/admin','/products#x','/catalogue/products/IMAGE_TRIAL'])A.throws(()=>clean(h));});
+test('duplicate parameters rejected instead of merged',()=>A.throws(()=>clean('/products?page=1&page=2')));
