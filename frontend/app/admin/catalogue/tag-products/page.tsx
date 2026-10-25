@@ -1,6 +1,4 @@
-import type {Metadata} from 'next';
-import {AdminShell} from '@/components/AdminShell';
-import TagProductEditor from './TagProductEditor';
+import {redirect} from 'next/navigation';
+import {tagProductEntry} from '@/lib/admin-tag-product-entry.mjs';
 export const dynamic='force-dynamic';
-export const metadata:Metadata={title:'Tag products | Luminoza',robots:{index:false,follow:false}};
-export default function TagProductsPage(){return <AdminShell active="catalogue"><TagProductEditor/></AdminShell>;}
+export default function TagProductsPage({searchParams}:{searchParams:Record<string,string|string[]|undefined>}){const params=new URLSearchParams();for(const key of ['edit','new']){const value=searchParams[key];if(Array.isArray(value))for(const item of value)params.append(key,item);else if(value!==undefined)params.set(key,value);}const entry=tagProductEntry('?'+params.toString());if(entry?.mode==='edit')redirect('/admin/catalogue?product='+encodeURIComponent(entry.id)+'&mode=edit');redirect('/admin/catalogue');}
