@@ -3,6 +3,7 @@ function createPublicationRouter(express,db){
  const router=express.Router(),service=require('../services/catalogue-publication').createPublicationService(db);
  const audit=require('../services/catalogue-products').createProductService(db).audit;
  const operations=require('../services/catalogue-product-operations').createProductOperations(db,audit);
+ router.use(require('./catalogue-ordering').createOrderingRouter(express,db,audit));
  const wrap=fn=>async(req,res)=>{try{res.set('Cache-Control','no-store');await fn(req,res);}catch(e){const status=[400,403,404,409].includes(e.status)?e.status:(e.code==='23514'||e.code==='P0001')?409:503;res.status(status).json({error:status===503?'Catalogue operation unavailable':e.status?e.message:'Database publication prerequisites not satisfied; reload saved state'});}};
  router.get('/product-workspace',wrap(async(req,res)=>{
   const page=Number(req.query.page||1),limit=25,q=String(req.query.q||'').trim().slice(0,200);if(!Number.isSafeInteger(page)||page<1||page>10000){const e=new Error('Invalid page');e.status=400;throw e;}

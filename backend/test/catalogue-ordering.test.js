@@ -1,0 +1,17 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {validateRows,scope,createOrderingService}=require('../services/catalogue-ordering');
+const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',parent='33333333-3333-4333-8333-333333333333';
+const rows=[{id:a,parent_id:null,sort_order:0,is_active:true},{id:b,parent_id:null,sort_order:0,is_active:false}];
+test('same-parent duplicates, including inactive rows, are rejected',()=>assert.throws(()=>validateRows(rows,[{id:a,sort_order:10},{id:b,sort_order:10}]),e=>e.status===400&&e.conflicts[0].ids.length===2));
+test('same order under different parents is valid',()=>assert.equal(validateRows([rows[0],{...rows[1],parent_id:parent}],[{id:a,sort_order:10},{id:b,sort_order:10}]).length,2));
+test('missing scope members are rejected',()=>assert.throws(()=>validateRows(rows,[{id:a,sort_order:10}]),{status:400}));
+test('duplicate IDs are rejected',()=>assert.throws(()=>validateRows(rows,[{id:a,sort_order:10},{id:a,sort_order:20}]),{status:400}));
+test('invalid numeric orders are rejected',()=>{for(const sort_order of [-1,1.5,100001,'10',null])assert.throws(()=>validateRows([rows[0]],[{id:a,sort_order}]),{status:400});});
+test('parent and unrelated field changes cannot be smuggled into reorder',()=>assert.throws(()=>validateRows([rows[0]],[{id:a,sort_order:10,parent_id:parent}]),{status:400}));
+test('valid gaps and zero are accepted',()=>assert.equal(validateRows(rows,[{id:a,sort_order:0},{id:b,sort_order:100}]).length,2));
+test('scope validation rejects missing parents and unknown tables',()=>{assert.throws(()=>scope('tags'),{status:400});assert.throws(()=>scope('products'),{status:404});assert.throws(()=>scope('tag-groups',a),{status:400});assert.equal(scope('categories','root').parent,'root');});
+function fixture(auditFails=false){let current=rows.map(r=>({...r,name:r.id,row_snapshot:JSON.stringify(r)})),updates=0;const db={actor:async()=>{},query:async(sql,args)=>{if(sql.startsWith('SELECT t.id,'))return {rows:current.map(r=>({...r}))};if(sql.startsWith('UPDATE public.categories')){updates++;for(const item of JSON.parse(args[0])){const r=current.find(x=>x.id===item.id);r.sort_order=item.sort_order;r.row_snapshot=JSON.stringify(r);}}return {rows:[]};},transaction:async fn=>{const old=structuredClone(current);try{return await fn(db);}catch(e){current=old;throw e;}}};return {service:createOrderingService(db,async()=>{if(auditFails)throw Error('audit failed');}),inspect:()=>({current,updates})};}
+test('stale snapshot performs no UPDATE',async()=>{const h=fixture();await assert.rejects(h.service.set({id:a},'categories',undefined,{edit_token:'a'.repeat(64),items:[{id:a,sort_order:10},{id:b,sort_order:20}]}),{status:409});assert.equal(h.inspect().updates,0);});
+test('bulk update changes all orders in one UPDATE',async()=>{const h=fixture(),before=await h.service.get('categories'),after=await h.service.set({id:a},'categories',undefined,{edit_token:before.edit_token,items:[{id:a,sort_order:10},{id:b,sort_order:20}]});assert.equal(h.inspect().updates,1);assert.equal(after.updated,2);assert.deepEqual(after.items.map(r=>r.sort_order),[10,20]);});
+test('audit failure rolls back the complete batch',async()=>{const h=fixture(true),before=await h.service.get('categories');await assert.rejects(h.service.set({id:a},'categories',undefined,{edit_token:before.edit_token,items:[{id:a,sort_order:10},{id:b,sort_order:20}]}),/audit failed/);assert.deepEqual(h.inspect().current.map(r=>r.sort_order),[0,0]);});
