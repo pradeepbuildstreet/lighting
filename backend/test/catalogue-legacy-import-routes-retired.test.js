@@ -1,0 +1,11 @@
+"use strict";
+const test=require('node:test'),A=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const {createImportRouter}=require('../api/catalogue-imports');
+const {createTemplateRouter}=require('../api/catalogue-upload-template');
+function fixture(){const routes=[],router={all(paths,handler){routes.push({paths,handler});return this;}};return {routes,router,express:{Router:()=>router}};}
+function response(){return {headers:{},statusCode:200,body:null,set(k,v){this.headers[k]=v;return this;},status(n){this.statusCode=n;return this;},json(body){this.body=body;return this;}};}
+const forbidden=new Proxy({}, {get(){throw Error('Retired dependency accessed');}});
+test('retired import factory does not access database, parser, product writer or upload middleware',()=>{const f=fixture();A.equal(createImportRouter({express:f.express,db:forbidden,multer:forbidden,products:forbidden,parseWorkbook:forbidden}),f.router);A.equal(f.routes.length,1);A.deepEqual(f.routes[0].paths,['/imports','/imports/*']);});
+for(const method of ['GET','POST','PUT','DELETE'])test('legacy import handler rejects '+method+' before work',()=>{const f=fixture();createImportRouter({express:f.express,db:forbidden});const res=response();f.routes[0].handler({method},res);A.equal(res.statusCode,410);A.equal(res.body.code,'LEGACY_IMPORT_RETIRED');A.equal(res.body.replacement_base,'/api/admin/catalogue/taxonomy/imports-v2');A.match(res.headers['Cache-Control'],/no-store/);});
+test('retired template factory never accesses database',()=>{const f=fixture();A.equal(createTemplateRouter(f.express,forbidden),f.router);A.equal(f.routes[0].paths,'/imports/template');const res=response();f.routes[0].handler({},res);A.equal(res.statusCode,410);A.equal(res.body.code,'LEGACY_TEMPLATE_RETIRED');A.equal(res.body.template_url,'/api/admin/catalogue/taxonomy/imports-v2/template');});
+test('retired routers do not load old service implementations or mount the tag route namespace',()=>{for(const name of ['catalogue-imports','catalogue-upload-template']){const source=fs.readFileSync(path.join(__dirname,'../api/'+name+'.js'),'utf8');A.doesNotMatch(source,/require\(['"]\.\.\/services\//);A.doesNotMatch(source,/router\.all\(['"]\/taxonomy/);}});

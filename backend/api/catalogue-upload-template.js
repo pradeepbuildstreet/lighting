@@ -1,10 +1,12 @@
 "use strict";
 function createTemplateRouter(express,db){
- const router=express.Router(),{createBuffer}=require('../services/catalogue-upload-template');
- // Mount AFTER existing requireAdmin; no DB credentials enter the workbook.
- router.get('/imports/template',async(_req,res)=>{
-  try{const buffer=await createBuffer(db);res.set('Cache-Control','no-store');res.set('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');res.set('Content-Disposition','attachment; filename="catalogue-products-'+new Date().toISOString().slice(0,10)+'.xlsx"');res.send(buffer);}
-  catch(e){console.error(JSON.stringify({event:'catalogue_template_failed',code:e.code||'TEMPLATE_ERROR'}));res.status(503).json({error:'Unable to generate workbook. Check reference data and catalogue connection.'});}
- });return router;
+ const router=express.Router();
+ // Mount after requireAdmin. Do not load the legacy template generator.
+ router.all('/imports/template',(_req,res)=>res.set('Cache-Control','private, no-store').status(410).json({
+  error:'The legacy workbook template is retired. Download the tag-model v2 template instead.',
+  code:'LEGACY_TEMPLATE_RETIRED',
+  template_url:'/api/admin/catalogue/taxonomy/imports-v2/template'
+ }));
+ return router;
 }
 module.exports={createTemplateRouter};
