@@ -10,7 +10,8 @@ function filterOptions(tree,facets,query,helpers){
  const categories=helpers.flattenCategories(tree).map(c=>({value:c.slug,label:'— '.repeat(c.path.split('/').length-1)+c.name+' ('+c.product_count+')'}));
  const brands=[...new Set(facets.map(f=>f.brand).filter(b=>typeof b==='string'&&b.length))];if(query.brand&&!brands.includes(query.brand))brands.push(query.brand);brands.sort();
  const currencies=[...new Set(facets.map(f=>f.currency))];if(query.currency&&!currencies.includes(query.currency))currencies.push(query.currency);currencies.sort();
- return {categories,brands,currencies};
+ const kinds=[...new Set(facets.map(f=>f.kind).filter(k=>typeof k==='string'&&k.length))];if(query.kind&&!kinds.includes(query.kind))kinds.push(query.kind);kinds.sort();
+ return {categories,brands,currencies,kinds};
 }
 function listingState(data){const p=data.pagination,count=data.products.length,outOfRange=p.page>Math.max(1,p.pages);return {count,total:p.total,page:p.page,pages:p.pages,outOfRange,empty:p.total===0,start:count?(p.page-1)*p.limit+1:0,end:count?(p.page-1)*p.limit+count:0};}
 function paginationLinks(path,query,pagination,helpers){

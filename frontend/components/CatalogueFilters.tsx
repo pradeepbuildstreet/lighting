@@ -1,12 +1,13 @@
 "use client";
 import {useState,type FormEvent} from 'react';
 import Link from 'next/link';
+import {kindLabel} from '@/lib/catalogue-tag-presentation.mjs';
 import {useRouter} from 'next/navigation';
 import {CatalogueTagFilters} from './CatalogueTagFilters';
 import {buildListQuery,pageHref} from '@/lib/catalogue-client';
 import type {CatalogueQuery} from '@/lib/catalogue-types';
 import styles from './CatalogueListing.module.css';
-type Props={path:string;query:CatalogueQuery;fixedCategory?:{slug:string;name:string};choices:{categories:{value:string;label:string}[];brands:string[];currencies:string[]};facetsUnavailable:boolean};
+type Props={path:string;query:CatalogueQuery;fixedCategory?:{slug:string;name:string};choices:{categories:{value:string;label:string}[];brands:string[];currencies:string[];kinds?:string[]};facetsUnavailable:boolean};
 export function CatalogueFilters({path,query,fixedCategory,choices,facetsUnavailable}:Props){
  const [currency,setCurrency]=useState(query.currency||''),[sort,setSort]=useState(query.sort||'name'),[min,setMin]=useState(query.min_price||''),[max,setMax]=useState(query.max_price||''),[error,setError]=useState(''),[tagValue,setTagValue]=useState(query.tag_filters||'');
  const router=useRouter();
@@ -16,7 +17,7 @@ export function CatalogueFilters({path,query,fixedCategory,choices,facetsUnavail
  <h2 className="text-lg font-semibold">Filter products</h2>
  <label>Search<input type="search" name="q" defaultValue={query.q||''} maxLength={200}/></label>
  {fixedCategory?<><p>Category: {fixedCategory.name}</p><input type="hidden" name="category" value={fixedCategory.slug}/></>:<label>Category<select name="category" defaultValue={query.category||''}><option value="">All categories</option>{choices.categories.map(c=><option key={c.value} value={c.value}>{c.label}</option>)}</select></label>}
- <label>Product kind<select name="kind" defaultValue={query.kind||''}><option value="">Fixtures and lights</option><option value="fixture">Fixtures</option><option value="light">Lights</option></select></label>
+ <label>Product kind<select name="kind" defaultValue={query.kind||''}><option value="">All product kinds</option>{Array.from(new Set([...(choices.kinds||[]),...(query.kind?[query.kind]:[])])).sort().map(k=><option key={k} value={k}>{kindLabel(k)}</option>)}</select></label>
  <label>Brand<select name="brand" defaultValue={query.brand||''}><option value="">All brands</option>{choices.brands.map(b=><option key={b} value={b}>{b}</option>)}</select></label>
  <label>Currency<select name="currency" value={currency} onChange={e=>changeCurrency(e.target.value)}><option value="">All currencies</option>{choices.currencies.map(c=><option key={c} value={c}>{c}</option>)}</select></label>
  <p className={styles.meta}>Select a currency to use price filters or price sorting.</p>

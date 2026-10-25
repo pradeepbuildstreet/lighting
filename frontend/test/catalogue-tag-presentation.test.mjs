@@ -1,0 +1,9 @@
+import test from 'node:test';import A from 'node:assert/strict';import {createRequire} from 'node:module';import {readFileSync} from 'node:fs';
+import {kindLabel,tagSpecRows} from '../lib/catalogue-tag-presentation.mjs';
+const require=createRequire(import.meta.url),M=require('../lib/catalogue-listing-model.js');
+test('reference label preferred and new kinds not mislabeled Light',()=>{A.equal(kindLabel('integrated-light','Integrated lights'),'Integrated lights');A.equal(kindLabel('replaceable-bulb'),'Replaceable bulb');A.equal(kindLabel('driver-power-supply'),'Driver power supply');});
+test('tag fixture uses minimal dimensions not legacy descriptive slots',()=>{const r=tagSpecRows({entry_profile:'fixture',specifications:{length_mm:'100',light_source_mode:'replaceable'}});A.ok(r.rows.some(x=>x.key==='length_mm'&&x.value==='100 mm'));A.equal(r.rows.some(x=>x.key==='material'||x.key==='width_mm'),false);});
+test('light sources display zero lumens',()=>A.equal(tagSpecRows({entry_profile:'light_source',specifications:{lumens:0}}).rows.find(x=>x.key==='lumens').value,'0 lm'));
+test('general kinds do not inherit legacy light fields',()=>{const rows=tagSpecRows({entry_profile:'general',specifications:{}}).rows;A.deepEqual(rows.map(x=>x.key),['length_mm','breadth_mm','height_mm']);});
+test('kind filter options come from facets and retain selection when unavailable',()=>{const x=M.filterOptions([],[{kind:'integrated-light',brand:null,currency:'INR'}],{kind:'replaceable-bulb'},{flattenCategories:()=>[]});A.deepEqual(x.kinds,['integrated-light','replaceable-bulb']);});
+test('detail source exposes grouped tags and separate information section (not React execution)',()=>{const s=readFileSync(new URL('../components/CatalogueProductDetails.tsx',import.meta.url),'utf8');A.ok(s.includes('Category filter attributes'));A.ok(s.includes('Additional information'));A.ok(s.includes('product.tags_loaded'));A.ok(s.includes('tagSpecRows(product)'));});
