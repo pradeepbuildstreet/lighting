@@ -3,7 +3,7 @@ const test=require('node:test'),assert=require('node:assert/strict');
 const {blockers,corpusDigest,createPublicationService}=require('../services/catalogue-publication');
 const id='11111111-1111-1111-1111-111111111111';
 const product={id,product_kind:'light',revision:2,is_active:true,selling_price:'0.00',review_status:'approved',approved_revision:2,approved_by:id,duplicate_of_product_id:null,published:false};
-const facts={primaryCategory:true,primaryImage:true,activeSpecType:true,audit:{status:'completed',product_revision:2,corpus_digest:'digest'},review:{decision:'approve_distinct',reviewer_id:id},digest:'digest'};
+const facts={tagModel:true,modelPrerequisite:true,modelActivated:true,primaryCategory:true,primaryImage:true,activeSpecType:true,audit:{status:'completed',product_revision:2,corpus_digest:'digest',algorithm_version:'tags-evidence-v2'},review:{decision:'approve_distinct',reviewer_id:id},digest:'digest'};
 test('current approval and zero price accepted',()=>assert.deepEqual(blockers(product,facts),[]));
 test('inactive product blocked',()=>assert.ok(blockers({...product,is_active:false},facts).includes('Product must be active')));
 test('missing price blocked',()=>assert.ok(blockers({...product,selling_price:null},facts).some(x=>x.includes('selling price'))));
@@ -12,7 +12,7 @@ test('old approved revision blocked',()=>assert.ok(blockers({...product,approved
 test('duplicate target blocked even with approved status',()=>assert.ok(blockers({...product,duplicate_of_product_id:id},facts).some(x=>x.includes('Duplicate products'))));
 test('active primary category required',()=>assert.ok(blockers(product,{...facts,primaryCategory:false}).includes('Active primary category required')));
 test('primary image required',()=>assert.ok(blockers(product,{...facts,primaryImage:false}).includes('Primary image required')));
-test('active spec type required',()=>assert.ok(blockers(product,{...facts,activeSpecType:false}).some(x=>x.includes('active fixture'))));
+test('active tag model required',()=>assert.ok(blockers(product,{...facts,activeSpecType:false}).some(x=>x.includes('active tag-product'))));
 test('newer pending audit blocks older approval',()=>assert.ok(blockers(product,{...facts,audit:{...facts.audit,status:'running'}}).some(x=>x.includes('Latest completed'))));
 test('newer rejected review blocks historical approval',()=>assert.ok(blockers(product,{...facts,review:{...facts.review,decision:'reject'}}).some(x=>x.includes('Latest audit review'))));
 test('reviewer must match approval actor',()=>assert.ok(blockers(product,{...facts,review:{...facts.review,reviewer_id:'other'}}).some(x=>x.includes('Latest audit review'))));

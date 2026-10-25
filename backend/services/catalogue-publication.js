@@ -12,14 +12,13 @@ function blockers(product,facts){
  if(product.duplicate_of_product_id)reasons.push('Duplicate products cannot be published');
  if(!facts.primaryCategory)reasons.push('Active primary category required');
  if(!facts.primaryImage)reasons.push('Primary image required');
- if(facts.tagModel){
-  if(!facts.modelPrerequisite)reasons.push('Tag publication database prerequisite is not installed');
-  if(!facts.modelActivated)reasons.push('Integrated tag-product cutover is not activated');
-  if(facts.modelPrerequisite&&facts.modelActivated&&!facts.activeSpecType)reasons.push('Valid active tag-product attributes, tags and direct-product categories required');
- }else if(!facts.activeSpecType)reasons.push('Specifications and active fixture/light type required');
+ if(facts.tagModel!==true)reasons.push('Matching tag-model product attributes are required');
+ if(!facts.modelPrerequisite)reasons.push('Tag publication database prerequisite is not installed');
+ if(!facts.modelActivated)reasons.push('Integrated tag-product cutover is not activated');
+ if(facts.modelPrerequisite&&facts.modelActivated&&!facts.activeSpecType)reasons.push('Valid active tag-product attributes, tags and direct-product categories required');
  const a=facts.audit,r=facts.review;
  if(!a||a.status!=='completed'||String(a.product_revision)!==String(product.revision))reasons.push('Latest completed audit must match the current revision');
- if(facts.tagModel&&a?.algorithm_version!=='tags-evidence-v2')reasons.push('Current tags-evidence-v2 audit required');
+ if(a?.algorithm_version!=='tags-evidence-v2')reasons.push('Current tags-evidence-v2 audit required');
  if(!r||r.decision!=='approve_distinct'||r.reviewer_id!==product.approved_by)reasons.push('Latest audit review must approve this product as distinct');
  // Corpus freshness is checked before review, not forever after completed approval.
  if(!a?.corpus_digest)reasons.push('Completed audit evidence required');
@@ -28,20 +27,15 @@ function blockers(product,facts){
 function createPublicationService(db){
  async function inspect(c,id,locked=false){
   const product=(await c.query(`SELECT p.*,
-   (EXISTS(SELECT 1 FROM product_attributes WHERE product_id=p.id) OR EXISTS(SELECT 1 FROM product_tags WHERE product_id=p.id) OR p.product_kind NOT IN ('fixture','light')) AS tag_model,
+   EXISTS(SELECT 1 FROM product_attributes a JOIN product_kinds k ON k.id=a.product_kind_id WHERE a.product_id=p.id AND k.code=p.product_kind) AS tag_model,
    to_regprocedure('public.catalogue_product_model_ready(uuid,text)') IS NOT NULL AS model_prerequisite,
    EXISTS(SELECT 1 FROM catalogue_taxonomy_versions WHERE version=3) AS model_activated
    FROM (SELECT * FROM products WHERE id=$1${locked?' FOR UPDATE':''}) p`,[id])).rows[0];if(!product)fail(404,'Product not found');
-  const tagModel=product.tag_model===true||!['fixture','light'].includes(product.product_kind);
+  const tagModel=product.tag_model===true;
   const primaryCategory=(await c.query('SELECT c.id FROM product_categories pc JOIN categories c ON c.id=pc.category_id WHERE pc.product_id=$1 AND pc.is_primary AND c.is_active'+(locked?' FOR SHARE OF c':''),[id])).rows.length>0;
   const primaryImage=(await c.query("SELECT id FROM product_media WHERE product_id=$1 AND is_primary AND media_type='image'"+(locked?' FOR SHARE':''),[id])).rows.length>0;
   let activeSpecType=false;
-  if(tagModel){
-   if(product.model_prerequisite===true&&product.model_activated===true)activeSpecType=(await c.query('SELECT public.catalogue_product_model_ready($1::uuid,$2::text) AS ready',[id,product.product_kind])).rows[0]?.ready===true;
-  }else{
-   const type=product.product_kind==='fixture'?['fixture_specs','fixture_types','fixture_type_id']:['light_specs','light_types','light_type_id'];
-   activeSpecType=(await c.query(`SELECT t.id FROM ${type[0]} s JOIN ${type[1]} t ON t.id=s.${type[2]} WHERE s.product_id=$1 AND t.is_active`+(locked?' FOR SHARE OF t':''),[id])).rows.length>0;
-  }
+  if(tagModel&&product.model_prerequisite===true&&product.model_activated===true)activeSpecType=(await c.query('SELECT public.catalogue_product_model_ready($1::uuid,$2::text) AS ready',[id,product.product_kind])).rows[0]?.ready===true;
   const audit=(await c.query('SELECT * FROM product_duplicate_audits WHERE product_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[id])).rows[0];
   const review=audit?(await c.query('SELECT * FROM product_duplicate_reviews WHERE audit_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[audit.id])).rows[0]:null;
   const facts={primaryCategory,primaryImage,activeSpecType,audit,review,tagModel,modelPrerequisite:product.model_prerequisite===true,modelActivated:product.model_activated===true};
