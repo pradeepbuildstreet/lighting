@@ -1,10 +1,11 @@
 import test from 'node:test';
 import A from 'node:assert/strict';
-import {referenceSection,referenceLinks} from '../lib/admin-reference-navigation.mjs';
+import {referenceSection,referenceLinks,referenceTabs,catalogueReferenceTab} from '../lib/admin-reference-navigation.mjs';
 for(const value of ['tag-groups','tags','product-kinds','categories','global'])test('deep link selects '+value,()=>A.equal(referenceSection(value),value));
 for(const value of [undefined,null,'unknown',['tags'],'__proto__','constructor'])test('invalid section defaults safely: '+String(value),()=>A.equal(referenceSection(value),'tag-groups'));
 test('normal reference navigation includes groups and tags',()=>{A.ok(referenceLinks.some(x=>x.label==='Tag groups'));A.ok(referenceLinks.some(x=>x.label==='Tags'));});
 test('each taxonomy link opens its own section',()=>{for(const x of referenceLinks.filter(x=>x.href.includes('/taxonomy'))){const url=new URL(x.href,'https://test.invalid');A.equal(referenceSection(url.searchParams.get('section')),x.key);}});
-test('legacy reference links retain existing routes',()=>{for(const key of ['fixture-types','light-types','dealers'])A.ok(referenceLinks.find(x=>x.key===key).href.includes('workspace=reference&reference='+key));});
+test('dealer reference link retains its route',()=>A.ok(referenceLinks.find(x=>x.key==='dealers').href.includes('workspace=reference&reference=dealers')));
+for(const key of ['fixture-types','light-types'])test('retired reference is absent and old bookmarks normalize safely: '+key,()=>{A.ok(!referenceTabs.includes(key));A.ok(!referenceLinks.some(x=>x.key===key));A.equal(catalogueReferenceTab(key),'categories');});
 test('navigation does not use activation-gated product routes',()=>A.ok(referenceLinks.every(x=>!x.href.includes('products-v2')&&!x.href.includes('tag-products'))));
 test('link identities are unique and same-origin paths',()=>{A.equal(new Set(referenceLinks.map(x=>x.key)).size,referenceLinks.length);A.ok(referenceLinks.every(x=>x.href.startsWith('/admin/catalogue')));});

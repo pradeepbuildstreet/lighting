@@ -23,9 +23,8 @@ router.get('/state',route(async(_req,res)=>{
  await db.query('SELECT allow_direct_products FROM categories LIMIT 0');
  res.json({ready:true,schema_version:3,mode:'catalogue_review',publication_enabled:true});
 }));
+router.all(['/fixture-types','/fixture-types/:id','/light-types','/light-types/:id'],(_req,res)=>res.status(410).json({error:'Fixture and light type references are retired. Use product kinds and tags.'}));
 const masters={
- 'fixture-types':{table:'fixture_types',fields:['code','name','is_active']},
- 'light-types':{table:'light_types',fields:['code','name','base_type','technology','is_active']},
  'dealers':{table:'dealers',fields:['dealer_code','name','contact_person','phone','email','gstin','address','is_active']},
  'categories':{table:'categories',fields:['slug','name','parent_id','description','sort_order','is_active','allow_direct_products']}
 };
@@ -37,7 +36,6 @@ function masterData(key,b,old={}){
   d.allow_direct_products=categoryPolicy.directProducts(b.allow_direct_products,old.allow_direct_products??true);
  }else{
   const code=key==='dealers'?'dealer_code':'code';d[code]=V.text(b[code],code,true,100);if(!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(d[code]))V.fail('Invalid code');
-  if(key==='light-types')for(const f of ['base_type','technology'])d[f]=V.text(b[f],f);
   if(key==='dealers'){
    for(const f of ['contact_person','phone','email','gstin'])d[f]=V.text(b[f],f);
    if(d.email&&!/^\S+@\S+\.\S+$/.test(d.email))V.fail('Invalid email');d.address=V.json(b.address,'address');
