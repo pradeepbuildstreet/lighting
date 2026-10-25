@@ -1,0 +1,12 @@
+import test from 'node:test';import A from 'node:assert/strict';import {readFileSync} from 'node:fs';
+const source=readFileSync(new URL('../app/admin/catalogue/CatalogueManager.tsx',import.meta.url),'utf8');
+function body(name,signature){const line=source.split('\n').find(s=>s.includes('function '+name+signature));A.ok(line,'Missing '+name);return line.slice(line.indexOf('{')+1,line.lastIndexOf('}'));}
+function navigate(allowed){const trigger={current:null},navigationEpoch={current:5},calls=[],router={push:path=>calls.push(path)},button={name:'new'};new Function('canLeave','trigger','navigationEpoch','router','button',body('newProduct','(button:HTMLElement)'))(()=>allowed,trigger,navigationEpoch,router,button);return {trigger,navigationEpoch,calls,button};}
+test('New action respects busy/unsaved-change guard (extracted function)',()=>{const r=navigate(false);A.deepEqual(r.calls,[]);A.equal(r.navigationEpoch.current,5);});
+test('New action opens only tag editor and invalidates old navigation (extracted function)',()=>{const r=navigate(true);A.deepEqual(r.calls,['/admin/catalogue/tag-products']);A.equal(r.trigger.current,r.button);A.equal(r.navigationEpoch.current,6);});
+const AsyncFunction=Object.getPrototypeOf(async function(){}).constructor;
+function saver(product,api){return new AsyncFunction('product','api','categoryState','categorySelectionError','otherSpecText','inbuiltText',body('saveProduct','()'))(product,api,{error:''},'','{}','{}');}
+test('unsaved legacy draft cannot call the legacy POST endpoint (extracted function)',async()=>{let calls=0;await A.rejects(saver({},async()=>{calls++;}),/legacy creation is disabled/);A.equal(calls,0);});
+test('saved legacy edit retains PUT rather than POST (mock request, not HTTP)',async()=>{let request;await A.rejects(saver({id:'existing-id',product_kind:'fixture',specs:{}},async(...args)=>{request=args;throw new Error('captured request');}),/captured request/);A.equal(request[0],'/products/existing-id');A.equal(request[1],'PUT');});
+test('source removes inline legacy New form and labels tag workflow (not React rendering)',()=>{A.equal(source.includes("productMode==='edit'&&!product.id&&<InlineEditorRow"),false);A.ok(source.includes('>New tag product</button>'));A.ok(source.includes("import {useRouter} from 'next/navigation'"));});
+test('reference, review, media and import workspaces remain present (source check)',()=>{for(const name of ['CatalogueReferenceForm','ProductReviewPanel','ProductConfigurationPanel','CatalogueImportPanel'])A.ok(source.includes(name));});
