@@ -3,7 +3,7 @@ import {createClient,buildListQuery as legacyBuildListQuery,pageHref as legacyPa
 import {taggedListQuery,taggedPageHref} from './catalogue-tag-filter-model.mjs';
 import {visibleCategoryTree} from './catalogue-category-visibility.mjs';
 import {createInflightLoader} from './catalogue-performance.mjs';
-import type {CatalogueClient,CatalogueCategories,RequestOptions} from './catalogue-types';
+import type {CatalogueClient,CatalogueCategories,CatalogueQuery,RequestOptions} from './catalogue-types';
 export {CatalogueError,productHref,categoryHref,resolveCategoryPath,flattenCategories,formatPrice,safeMediaUrl} from './catalogue-core';
 export type * from './catalogue-types';
 export function buildListQuery(input:CatalogueQuery|URLSearchParams={}):URLSearchParams{return taggedListQuery(input,legacyBuildListQuery);}

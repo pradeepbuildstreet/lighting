@@ -2,7 +2,7 @@ import {parseTagSelections} from './catalogue-tag-filter-model.mjs';
 const SLUG_PATH=/^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 const LIST_KEYS=new Set(['q','search','category','kind','brand','currency','min_price','max_price','sort','page','limit','tag_filters']);
 export function safeReturnTo(value){
- if(typeof value!=='string'||!value.startsWith('/')||value.startsWith('//')||value.includes('\\'))return null;
+ if(typeof value!=='string'||value.length>20000||!value.startsWith('/')||value.startsWith('//')||value.includes('\\'))return null;
  try{const url=new URL(value,'https://browse.invalid');if(url.origin!=='https://browse.invalid'||url.hash)return null;
   if(url.pathname!=='/products'&&!(url.pathname.startsWith('/categories/')&&SLUG_PATH.test(url.pathname.slice(12))))return null;
   const seen=new Set();for(const [key] of url.searchParams){if(!LIST_KEYS.has(key)||seen.has(key))return null;seen.add(key);}

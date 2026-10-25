@@ -1,0 +1,18 @@
+import test from 'node:test';import A from 'node:assert/strict';import {readFileSync} from 'node:fs';
+import {parseTagSelections,encodeTagSelections,toggleTagChoice,toggleUnclassifiedChoice,taggedListQuery} from '../lib/catalogue-tag-filter-model.mjs';
+import {safeReturnTo} from '../lib/catalogue-browse-context.mjs';
+const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',c='33333333-3333-4333-8333-333333333333',row={group_id:a,tag_ids:[b],unclassified:false};
+test('client explicitly imports its referenced CatalogueQuery type (source check, not tsc)',()=>{const s=readFileSync(new URL('../lib/catalogue-client.ts',import.meta.url),'utf8');A.match(s,/import type \{[^}]*\bCatalogueQuery\b[^}]*\} from '\.\/catalogue-types'/);});
+test('public query declares tag_filters (source check, not tsc)',()=>{const s=readFileSync(new URL('../lib/catalogue-types.ts',import.meta.url),'utf8');A.match(s,/tag_filters\?:string/);});
+test('null selector rejected consistently with backend',()=>A.throws(()=>parseTagSelections(null),e=>e.code==='invalid_request'));
+test('malformed JSON rejected rather than silently dropped',()=>A.throws(()=>parseTagSelections('{'),e=>e.code==='invalid_request'));
+test('duplicate group rejected',()=>A.throws(()=>parseTagSelections(JSON.stringify([row,row]))));
+test('101 raw tags in group rejected even if duplicate',()=>A.throws(()=>encodeTagSelections([{...row,tag_ids:Array(101).fill(b)}])));
+test('tag and unclassified selection compose OR without clearing tag',()=>{const s=toggleUnclassifiedChoice([row],a);A.equal(s[0].unclassified,true);A.deepEqual(s[0].tag_ids,[b]);A.deepEqual(toggleTagChoice(s,a,c)[0],{...row,tag_ids:[b,c],unclassified:true});});
+test('removing a tag leaves unclassified choice selected',()=>A.deepEqual(toggleTagChoice([{...row,unclassified:true}],a,b),[{...row,tag_ids:[],unclassified:true}]));
+test('removing final tag removes group',()=>A.deepEqual(toggleTagChoice([row],a,b),[]));
+test('ordinary return URL limit remains 4000',()=>A.equal(safeReturnTo('/products?q='+'a'.repeat(4000)),null));
+test('raw total return URL limit also applies to whitespace-padded tag JSON',()=>{const value='/products?tag_filters='+encodeURIComponent(' '.repeat(7000)+'[]');A.equal(safeReturnTo(value),null);});
+test('valid long tagged URL within cap retained',()=>{const tags=Array.from({length:100},(_,i)=>'00000000-0000-4000-8000-'+i.toString(16).padStart(12,'0'));const value='/products?tag_filters='+encodeURIComponent(encodeTagSelections([{...row,tag_ids:tags}]));A.ok(value.length>4000&&value.length<20000);A.equal(safeReturnTo(value),value);});
+test('external redirect and duplicate tag query remain rejected',()=>{A.equal(safeReturnTo('//evil.invalid'),null);A.equal(safeReturnTo('/products?tag_filters=[]&tag_filters=[]'),null);});
+test('ordinary URLSearchParams without tag_filters stay valid',()=>A.equal(taggedListQuery(new URLSearchParams('q=lamp'),p=>new URLSearchParams(p)).get('q'),'lamp'));
