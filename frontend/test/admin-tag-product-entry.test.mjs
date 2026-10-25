@@ -1,0 +1,10 @@
+import test from 'node:test';import A from 'node:assert/strict';import {tagProductEditorHref,tagProductEntry} from '../lib/admin-tag-product-entry.mjs';
+const id='aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+test('saved product roundtrips into the existing editor',()=>A.deepEqual(tagProductEntry(new URL(tagProductEditorHref(id),'https://test.invalid').search),{mode:'edit',id}));
+test('new product uses the same editor route',()=>{A.equal(tagProductEditorHref(),'/admin/catalogue/tag-products?new=1');A.deepEqual(tagProductEntry('?new=1'),{mode:'new'});});
+test('ordinary workspace does not open a product automatically',()=>A.equal(tagProductEntry('?q=lamp'),null));
+test('UUIDs normalize without changing product identity',()=>A.deepEqual(tagProductEntry('?edit='+id.toUpperCase()),{mode:'edit',id}));
+for(const value of ['', '../products', 'https://evil.invalid', '<script>', '__proto__'])test('invalid edit ID rejected: '+value,()=>A.throws(()=>tagProductEntry('?edit='+encodeURIComponent(value)),/Invalid product ID/));
+for(const query of ['?edit='+id+'&edit='+id,'?new=1&new=1','?edit='+id+'&new=1'])test('ambiguous entry rejected: '+query,()=>A.throws(()=>tagProductEntry(query),/Ambiguous/));
+test('invalid new flag rejected',()=>A.throws(()=>tagProductEntry('?new=0'),/Invalid new/));
+test('unsafe outbound ID rejected',()=>A.throws(()=>tagProductEditorHref('../products'),/Invalid product ID/));
