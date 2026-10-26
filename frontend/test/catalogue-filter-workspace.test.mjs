@@ -1,0 +1,18 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {draftFromQuery,editFilters,clearFilters,removeFilter,selectionCount} from '../lib/catalogue-filter-workspace.mjs';
+import {encodeTagSelections,parseTagSelections} from '../lib/catalogue-tag-filter-model.mjs';
+const g='11111111-1111-4111-8111-111111111111',a='22222222-2222-4222-8222-222222222222',b='33333333-3333-4333-8333-333333333333',other='44444444-4444-4444-8444-444444444444';
+const tags=encodeTagSelections([{group_id:g,tag_ids:[a,b],unclassified:false},{group_id:other,tag_ids:[],unclassified:true}]);
+test('normalizes search aliases and string pagination values',()=>{const d=draftFromQuery({search:'Pendant',limit:50});assert.equal(d.q,'Pendant');assert.equal(d.limit,'50');assert.equal(d.sort,'name');});
+test('fixed category cannot be changed by edits',()=>assert.equal(editFilters({category:'other'},{category:'new'},'pendants').category,'pendants'));
+test('clear filters preserves search, fixed category and page size',()=>{const d=clearFilters({q:'lamp',category:'pendants',brand:'B',kind:'fixture',currency:'INR',min_price:'100',sort:'price_asc',limit:50,tag_filters:tags},'pendants');assert.equal(d.q,'lamp');assert.equal(d.category,'pendants');assert.equal(d.limit,'50');assert.equal(d.sort,'name');for(const k of ['brand','kind','currency','min_price','max_price','tag_filters'])assert.equal(d[k],'');});
+test('clear all-products filters removes category but retains non-price sorting',()=>{const d=clearFilters({category:'pendants',q:'lamp',sort:'newest'});assert.equal(d.category,'');assert.equal(d.sort,'newest');assert.equal(d.q,'lamp');});
+test('removing currency clears dependent prices and price sorting',()=>{const d=removeFilter({currency:'INR',min_price:'100',max_price:'500',sort:'price_desc'},'currency');assert.equal(d.min_price,'');assert.equal(d.max_price,'');assert.equal(d.sort,'name');});
+test('removing price keeps currency and other selections',()=>{const d=removeFilter({currency:'INR',min_price:'100',brand:'B',tag_filters:tags},'price');assert.equal(d.currency,'INR');assert.equal(d.brand,'B');assert.equal(d.tag_filters,tags);});
+test('removing one alternative leaves its group and other groups intact',()=>{const d=removeFilter({tag_filters:tags},'tag',g,a),s=parseTagSelections(d.tag_filters);assert.deepEqual(s.find(x=>x.group_id===g).tag_ids,[b]);assert.ok(s.find(x=>x.group_id===other).unclassified);});
+test('group clear removes only that group',()=>{const d=removeFilter({tag_filters:tags},'group',g);assert.deepEqual(parseTagSelections(d.tag_filters).map(s=>s.group_id),[other]);});
+test('unclassified chip is directly removable',()=>{const d=removeFilter({tag_filters:tags},'unclassified',other);assert.equal(parseTagSelections(d.tag_filters).length,1);});
+test('mobile badge counts feature values rather than groups and excludes fixed category',()=>assert.equal(selectionCount({category:'pendants',brand:'B',currency:'INR',min_price:'100',tag_filters:tags},'pendants'),6));
+test('clearing does not mutate original URL state',()=>{const q={brand:'B',tag_filters:tags};removeFilter(q,'brand');assert.equal(q.brand,'B');assert.equal(q.tag_filters,tags);});
+test('invalid tag state is rejected rather than silently discarded',()=>assert.throws(()=>selectionCount({tag_filters:'invalid'})));
