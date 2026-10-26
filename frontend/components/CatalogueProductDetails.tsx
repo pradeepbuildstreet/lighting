@@ -1,3 +1,5 @@
+import {Suspense} from 'react';
+import {CategoryProductDiscovery} from './CategoryProductDiscovery';
 import {PublicProductEnquiryCount} from './PublicEnquiryCounts';
 import {WishlistButton} from './WishlistButton';
 import Link from 'next/link';
@@ -19,5 +21,6 @@ export function CatalogueProductDetails({product,adminPreview=false}:{product:Ca
  {product.tag_model&&product.tags_loaded&&[true,false].map(filter=>{const tags=(product.tags||[]).filter(t=>t.filter_attribute===filter);return tags.length?<section key={String(filter)}><h2 className="text-xl font-semibold mt-6">{filter?'Category filter attributes':'Additional information'}</h2><dl className={styles.specs}>{tags.map(t=><div key={t.id}><dt>{t.group_name}</dt><dd>{t.name}</dd></div>)}</dl></section>:null;})}
  </div></div>
  {!adminPreview&&product.kind==='fixture'&&<ProductCompatibility key={product.id} fixtureId={product.id} mode={fixtureMode(product)}/>}
+ {!adminPreview&&<Suspense fallback={<p role="status">Loading category products…</p>}><CategoryProductDiscovery productId={product.id}/></Suspense>}
  </section>;
 }
