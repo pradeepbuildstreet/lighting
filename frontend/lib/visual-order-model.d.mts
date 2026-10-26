@@ -1,0 +1,9 @@
+export type OrderingRecord={id:string;name:string;parent_id?:string|null;sort_order:number;is_active?:boolean|null};
+export type DisplayOrderingRecord=OrderingRecord&{_depth:number;_ancestors:string[]};
+export type OrderGroups=Record<string,string[]>;
+export type SortOrderItem={id:string;sort_order:number};
+export function moveOrderedItem<T>(items:T[],index:number,direction:number):T[];
+export function createOrderGroups(rows:OrderingRecord[]):OrderGroups;
+export function moveInOrderGroup(rows:OrderingRecord[],groups:OrderGroups,id:string,direction:number):OrderGroups;
+export function buildSortItems(rows:OrderingRecord[],groups:OrderGroups):SortOrderItem[];
+export function flattenOrderGroups(rows:OrderingRecord[],groups:OrderGroups,hierarchical?:boolean):DisplayOrderingRecord[];

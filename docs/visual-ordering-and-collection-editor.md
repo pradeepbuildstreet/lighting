@@ -1,0 +1,9 @@
+# Visual ordering and segmented collection editing
+
+The redundant Decorative Lighting hero, explanatory sentence and Browse products CTA are removed from the homepage. Gallery, categories, collections/showcase, latest products and metadata remain.
+
+Homepage Collections separates Collection details, Browse & select products, and Selected products & display order into state-preserving sections. The SKU bulk-entry UI and numeric collection-position input are removed. Selection uses the existing shared browser and checkboxes, with a 500-member limit and explicit Save collection. Collection metadata and ordered membership still save together through the existing collection API. Save does not await a secondary sidebar refresh. Failed/uncertain writes are not automatically retried.
+
+ReorderControls is shared by selected products and VisualOrderEditor. BulkOrderEditor is now a compatibility export of VisualOrderEditor, so existing category, tag-group, tag, kind, collection and media ordering entry points use visual earlier/later controls rather than manual numbers. Category subtrees remain attached and moves are sibling-only. The model generates unique numeric ranks internally; the existing backend complete-scope validation, optimistic tokens, transaction and audit behavior remain unchanged. No ranks are written until an explicit Save. Individual-record numeric sort fields outside these ordering views are not changed by this commit.
+
+Eleven isolated visual-model tests passed before this commit. Full TypeScript/production build, browser accessibility/layout and PostgreSQL integration remain unverified. Catalogue filter-control wiring, individual-record backend order guards, the media/SEO draft issue and legacy new-product route intent remain separate pending work. No database migration or live record mutation is performed by this commit.

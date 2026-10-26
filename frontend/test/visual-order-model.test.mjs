@@ -1,0 +1,14 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {moveOrderedItem,createOrderGroups,moveInOrderGroup,buildSortItems,flattenOrderGroups} from '../lib/visual-order-model.mjs';
+const rows=[{id:'a',name:'A',parent_id:null,sort_order:10,is_active:true},{id:'b',name:'B',parent_id:null,sort_order:20,is_active:false},{id:'a1',name:'A1',parent_id:'a',sort_order:10},{id:'a2',name:'A2',parent_id:'a',sort_order:20}];
+test('movement is immutable',()=>{const a=['a','b'];assert.deepEqual(moveOrderedItem(a,1,-1),['b','a']);assert.deepEqual(a,['a','b']);});
+test('bounds do not remove records',()=>assert.deepEqual(moveOrderedItem(['a','b'],0,-1),['a','b']));
+test('siblings are grouped independently',()=>assert.deepEqual(createOrderGroups(rows),{'$root':['a','b'],a:['a1','a2']}));
+test('moving a parent carries its rendered subtree',()=>{const groups=moveInOrderGroup(rows,createOrderGroups(rows),'b',-1);assert.deepEqual(flattenOrderGroups(rows,groups,true).map(r=>r.id),['b','a','a1','a2']);});
+test('moving a child never changes its parent',()=>{const groups=moveInOrderGroup(rows,createOrderGroups(rows),'a2',-1);assert.deepEqual(groups.a,['a2','a1']);assert.deepEqual(groups.$root,['a','b']);});
+test('generated ranks are unique within each sibling group',()=>assert.deepEqual(buildSortItems(rows,createOrderGroups(rows)),[{id:'a',sort_order:10},{id:'b',sort_order:20},{id:'a1',sort_order:10},{id:'a2',sort_order:20}]));
+test('inactive records remain in the saved order',()=>assert.ok(buildSortItems(rows,createOrderGroups(rows)).some(r=>r.id==='b')));
+test('duplicate source IDs are rejected',()=>assert.throws(()=>createOrderGroups([rows[0],rows[0]]),/duplicate/i));
+test('missing scope members are rejected',()=>assert.throws(()=>buildSortItems(rows,{'$root':['a','b'],a:['a1']}),/complete/i));
+test('cross-parent moves are rejected',()=>assert.throws(()=>buildSortItems(rows,{'$root':['a','b','a1'],a:['a2']}),/out-of-scope/i));
+test('unreachable category cycles are rejected',()=>{const list=[{id:'x',name:'X',parent_id:'y',sort_order:10},{id:'y',name:'Y',parent_id:'x',sort_order:10}];assert.throws(()=>flattenOrderGroups(list,createOrderGroups(list),true),/cycle/i);});
