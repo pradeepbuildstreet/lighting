@@ -1,0 +1,49 @@
+/* Presentation only: enquiry quantities, quote snapshots and totals are unchanged. */
+.offer-manager .offer-price-header,.offer-manager .offer-price-row{grid-template-columns:minmax(180px,1.4fr) minmax(220px,1.1fr) minmax(100px,.6fr) minmax(105px,.6fr) minmax(140px,.8fr);gap:16px;padding:16px 14px;align-items:start}
+.offer-manager .offer-price-header{background:#f5f7f3;font-size:11px;line-height:1.5;font-weight:600}
+.offer-manager .offer-price-header>span,.offer-manager .offer-price-row>span{min-width:0;overflow-wrap:anywhere}
+.offer-manager .offer-price-row>span:nth-child(2){display:grid;gap:10px;text-align:left}
+.offer-manager .offer-price-row label{display:grid;gap:6px;text-align:left;font:12px/1.5 Arial,sans-serif;color:#40564b}
+.offer-manager .offer-price-row>span:nth-child(2) input{max-width:140px;text-align:left}
+.offer-manager .offer-price-row textarea{display:block;width:100%;min-height:72px;resize:vertical;padding:9px;border:1px solid #cbd4ca;border-radius:4px;background:white;color:var(--ink);font:13px/1.5 Arial,sans-serif;box-sizing:border-box}
+.offer-manager .offer-price-row input{border-radius:4px;min-height:42px;box-sizing:border-box}
+.offer-manager .offer-price-row small{display:block;font:12px/1.5 Arial,sans-serif;white-space:normal}
+.offer-manager .offer-price-row .offer-product-label{gap:7px;font-size:14px;line-height:1.5}
+.offer-manager .offer-price-row>span:nth-child(3){padding-top:10px;font-variant-numeric:tabular-nums}
+.offer-manager fieldset>button{min-height:42px;margin:16px 10px 10px 0;padding:10px 16px;border-radius:4px;font:13px/1.4 Arial,sans-serif;cursor:pointer}
+.offer-manager fieldset>button:not(.category-manager-primary){border:1px solid #b8c5b7;background:#fff;color:var(--primary)}
+.offer-manager fieldset>button:disabled{opacity:.5;cursor:not-allowed}
+.offer-manager input:focus-visible,.offer-manager textarea:focus-visible,.offer-manager button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.offer-manager .offer-totals{gap:14px 28px;padding:20px;background:#f5f7f3;border:1px solid #d9ded5;border-radius:4px;margin:10px 0 22px;font-size:13px}
+.offer-manager .offer-totals>small{flex-basis:100%;font:12px/1.5 Arial,sans-serif;text-align:right}
+.offer-manager>section{margin:26px 0;padding:20px;border:1px solid #d7a692;border-left:5px solid #b64d30;background:#fff8f4;font:14px/1.6 Arial,sans-serif}
+.offer-manager>section h3{margin:0 0 10px;color:#8c321e;font-size:19px}
+.offer-manager>section p{margin:10px 0}
+.quote-section-title{margin:26px 0 14px;color:var(--primary);font-size:23px}
+.quote-excluded{margin-top:30px;border:1px solid #d7a692;border-left:5px solid #b64d30;border-radius:4px;background:#fff8f4;padding:22px;color:#333}
+.quote-excluded h2{margin:0 0 12px;color:#8c321e;font-size:24px;line-height:1.3}
+.quote-excluded>p{margin:0 0 18px;font:14px/1.6 Arial,sans-serif}
+.quote-excluded-scroll{overflow-x:auto;background:white;border:1px solid #e1cbc0}
+.quote-excluded table{width:100%;min-width:660px;border-collapse:collapse;font:14px/1.5 Arial,sans-serif}
+.quote-excluded caption{text-align:left;padding:12px 14px;font-weight:600;color:#8c321e;background:#fff1ec}
+.quote-excluded th,.quote-excluded td{padding:14px;vertical-align:top;text-align:left;border-bottom:1px solid #e1cbc0;overflow-wrap:anywhere}
+.quote-excluded th{background:#f9eee8;font-size:12px;color:#713623}
+.quote-excluded td:nth-child(2),.quote-excluded td:nth-child(3),.quote-excluded td:nth-child(4),.quote-excluded th:nth-child(2),.quote-excluded th:nth-child(3),.quote-excluded th:nth-child(4){text-align:right;font-variant-numeric:tabular-nums}
+.quote-excluded td:nth-child(4){font-weight:700;color:#8c321e;background:#fff5ee}
+.quote-excluded td:first-child{min-width:180px}
+.quote-excluded td:last-child{min-width:160px;white-space:pre-wrap}
+.quote-excluded td small{display:block;margin-top:5px;color:#69756f;font-size:12px}
+@media(max-width:1100px){
+ .offer-manager .offer-price-header{display:none}
+ .offer-manager .offer-price-row{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;border:1px solid #d9ded5;border-radius:5px;margin:12px 0;padding:18px}
+ .offer-manager .offer-price-row>.offer-product-label{grid-column:1/-1;padding-bottom:12px;border-bottom:1px solid #e1e6df}
+ .offer-manager .offer-price-row>span:nth-child(3),.offer-manager .offer-price-row>span:nth-child(4),.offer-manager .offer-price-row>span:nth-child(5){text-align:left;padding-top:0}
+ .offer-manager .offer-price-row>span:nth-child(3)::before,.offer-manager .offer-price-row>span:nth-child(4)::before,.offer-manager .offer-price-row>span:nth-child(5)::before{display:block;margin-bottom:7px;font:12px/1.5 Arial,sans-serif;color:#40564b}
+ .offer-manager .offer-price-row>span:nth-child(3)::before{content:'Enquiry unit price'}
+ .offer-manager .offer-price-row>span:nth-child(4)::before{content:'Discount %'}
+ .offer-manager .offer-price-row>span:nth-child(5)::before{content:'Offer price / unit'}
+}
+@media(max-width:600px){.offer-manager .offer-price-row{grid-template-columns:minmax(0,1fr)}.offer-manager .offer-manager-heading{display:grid;gap:14px}.offer-manager .offer-totals{justify-content:flex-start}.offer-manager .offer-totals>span{width:100%;justify-content:space-between}.offer-manager .offer-totals>small{text-align:left}.quote-excluded{padding:16px}.quote-excluded h2{font-size:21px}}
+@media print{.quote-excluded{background:white;border:2px solid #8c321e;break-inside:auto}.quote-excluded-scroll{overflow:visible}.quote-excluded table{min-width:0;font-size:10pt}.quote-excluded thead{display:table-header-group}.quote-excluded tr{break-inside:avoid}.quote-excluded th,.quote-excluded td{padding:8px}.quote-excluded td:first-child,.quote-excluded td:last-child{min-width:0}.quote-excluded h2{break-after:avoid}}
+
+.quote-partial-badge{display:block;padding:6px 8px;border-radius:3px;background:#fff1dc;color:#704512;font:13px/1.5 Arial,sans-serif}

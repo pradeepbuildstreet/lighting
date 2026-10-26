@@ -3,6 +3,7 @@ const fs=require('node:fs/promises'),path=require('node:path');
 const PDFDocument=require('pdfkit');
 const {readSiteLogo,renderSiteLogo}=require('./offer-logo');
 const {createOfferImageLoader}=require('./offer-image-cache');
+const {renderExcludedTable}=require('./offer-excluded-table');
 const money=v=>'INR '+Number(v).toFixed(Number.isInteger(Number(v))?0:2);
 async function loadImage(url,doc,mediaFile){
  try{
@@ -34,9 +35,10 @@ async function createOfferPdf(offer,res,mediaFile){
  doc.text('Created: '+new Date(offer.created_at).toLocaleDateString('en-IN'));
  if(offer.expires_at)doc.text('Valid until: '+new Date(offer.expires_at).toLocaleDateString('en-IN',{timeZone:'UTC'}));
  doc.text('9600096298 | 8124969000 | pradeep33.tcs@gmail.com');
- if(offer.is_partial)doc.text('PARTIAL AVAILABILITY: totals cover available quantities only. See excluded items below.');
+ if(offer.is_partial)doc.text('PARTIAL AVAILABILITY: totals cover available quantities only. See the not-available table after the terms.');
  doc.moveDown();
  const room=h=>{if(doc.y+h>doc.page.height-55){doc.addPage();doc.x=42;}};
+ doc.font('Helvetica-Bold').fontSize(12).fillColor('#18382e').text('Available products included in this quotation',42,doc.y,{width:511});doc.moveDown(.5);
  function header(){const y=doc.y;doc.font('Helvetica-Bold').fontSize(9).fillColor('#18382e');for(const [t,x,w] of [['Product',98,105],['Qty',211,28],['List price',246,75],['Discount',328,55],['Offer price',390,74],['Line total',471,82]])doc.text(t,x,y,{width:w,align:x===98?'left':'right'});doc.y=y+25;}
  header();
  for(const item of offer.items){
@@ -56,14 +58,10 @@ async function createOfferPdf(offer,res,mediaFile){
  doc.moveDown();
  const terms=offer.terms||{},termsList=[['GST / tax',terms.gst],['Payment terms',terms.payment_terms],['Account / payment details',terms.payment_details],['Estimated delivery',terms.delivery_days?terms.delivery_days+' days':''],['Additional terms',terms.other_terms]].filter(([,v])=>v);
  if(termsList.length){room(50);doc.font('Helvetica-Bold').fontSize(12).text('Terms and conditions',42,doc.y,{width:511});for(const [label,value] of termsList){room(45);doc.font('Helvetica-Bold').fontSize(9).text(label+':',42,doc.y,{width:511});doc.font('Helvetica').text(String(value),42,doc.y,{width:511});doc.moveDown(.3);}}
+ renderExcludedTable(doc,offer.unavailable_items||[]);
  room(100);doc.font('Helvetica-Bold').fontSize(11).text('Visit our showrooms',42,doc.y,{width:511});doc.font('Helvetica').fontSize(9);
  doc.text('LED Zone - No 10, Ratan Bazaar, Evening Bazaar, Tamil Nadu',42,doc.y,{width:511,link:'https://maps.app.goo.gl/t5Sg3MG2oLgyoBX26',underline:true});
  doc.text('HomeStory - 1/348, East Coast Rd, Anna Enclave, Injambakkam, Chennai, Tamil Nadu 600115',42,doc.y,{width:511,link:'https://share.google/jrM4UJC2TDh3p9sga',underline:true});
- if(offer.unavailable_items&&offer.unavailable_items.length){
-  doc.moveDown();room(85);doc.font('Helvetica-Bold').fontSize(12).text('Unavailable / excluded from this quotation',42,doc.y,{width:511});
-  doc.font('Helvetica').fontSize(10).text('These quantities are NOT included in the subtotal, discount or offer total.',42,doc.y,{width:511});doc.moveDown(.5);
-  for(const item of offer.unavailable_items){const text=`${item.name} | SKU: ${item.sku}\nRequested: ${item.requested_quantity} | Quoted: ${item.available_quantity} | Unavailable / excluded: ${item.unavailable_quantity}`+(item.note?'\nRemark: '+item.note:'');doc.font('Helvetica').fontSize(9);room(Math.min(doc.heightOfString(text,{width:511})+12,650));doc.text(text,42,doc.y,{width:511});doc.moveDown(.6);}
- }
  doc.end();
 }
 module.exports={createOfferPdf,loadImage};

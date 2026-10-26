@@ -1,0 +1,9 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {renderExcludedTable}=require('../services/offer-excluded-table');
+function document(){const d={y:600,x:42,page:{height:842},texts:[],pages:1,addPage(){this.pages++;this.y=42;return this;},text(s,x,y){this.texts.push({text:String(s),page:this.pages});this.y=y+14;return this;},heightOfString(s){return Math.ceil(String(s).length/35)*12;},moveDown(){this.y+=12;return this;}};for(const m of ['font','fontSize','fillColor','save','rect','fill','restore','lineWidth','strokeColor','stroke'])d[m]=()=>d;return d;}
+const line={product_id:'id',name:'Pendant',sku:'P1',requested_quantity:3,available_quantity:2,unavailable_quantity:1,note:'Balance not available'};
+test('excluded quantities are a separately headed table, not fine print',()=>{const d=document();renderExcludedTable(d,[line]);for(const t of ['Product / SKU','Requested','Quoted','Not available','1','2','3','Remark: Balance not available'])assert.ok(d.texts.some(r=>r.text===t));assert.ok(d.texts[0].text.includes('not included in this quotation'));assert.ok(!d.texts.some(r=>r.text.includes('INR')));});
+test('long excluded tables repeat their section and column headers on subsequent pages',()=>{const d=document();renderExcludedTable(d,Array.from({length:20},()=>({...line})));assert.ok(d.pages>1);assert.ok(d.texts.some(r=>r.text.includes('(continued)')));for(let p=2;p<=d.pages;p++)assert.ok(d.texts.some(r=>r.page===p&&r.text==='Not available'));});
+test('wholly unavailable products retain requested and excluded quantities',()=>{const d=document();renderExcludedTable(d,[{...line,available_quantity:0,unavailable_quantity:3}]);assert.ok(d.texts.some(r=>r.text==='0'));assert.equal(d.texts.filter(r=>r.text==='3').length,2);});
+test('no excluded quantities produces no section',()=>{const d=document();renderExcludedTable(d,[]);assert.equal(d.texts.length,0);});

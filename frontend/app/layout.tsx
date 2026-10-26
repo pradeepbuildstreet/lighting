@@ -1,5 +1,6 @@
 import {HowToBuyFloater} from '@/components/HowToBuyFloater';
 import "./globals.css";
+import "./quotation-layout.css";
 import type { Metadata } from "next";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
