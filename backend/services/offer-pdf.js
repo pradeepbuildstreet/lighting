@@ -11,7 +11,7 @@ async function loadImage(url,doc,mediaFile){
   const configured=(process.env.IMAGE_REPO_URL||'').trim();if(!configured)return null;
   const source=new URL(url,configured),allowed=new Set([configured,...(process.env.FRONTEND_ORIGIN||'').split(',')].filter(Boolean).map(v=>{try{return new URL(v.trim()).origin;}catch(_){return '';}}));
   if(!['https:','http:'].includes(source.protocol)||source.username||source.password||!allowed.has(source.origin))return null;
-  const publicPath=decodeURIComponent(source.pathname).replace(/^\+/,''),root=path.resolve(process.env.IMAGE_PUBLIC_ROOT||path.join(__dirname,'../../frontend/public'));
+  const publicPath=decodeURIComponent(source.pathname).replace(/^\/+/,'');const root=path.resolve(process.env.IMAGE_PUBLIC_ROOT||path.join(__dirname,'../../frontend/public'));
   if(!publicPath||publicPath.includes('\0'))return null;
   const candidates=[path.resolve(root,publicPath)];if(publicPath.startsWith('uploads/'))candidates.push(path.resolve(root,'uploads',path.basename(publicPath)));
   for(const candidate of candidates){try{const realRoot=await fs.realpath(root),real=await fs.realpath(candidate);if(!real.startsWith(realRoot+path.sep))continue;const stat=await fs.stat(real);if(!stat.isFile()||stat.size>4000000)continue;const b=await fs.readFile(real);doc.openImage(b);return b;}catch(_){}}
