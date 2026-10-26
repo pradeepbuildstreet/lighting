@@ -1,0 +1,10 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict'),{splitEnquiry}=require('../services/enquiry-availability-core');
+const items=[1,2,3,4].map((p,i)=>({product_id:'00000000-0000-0000-0000-'+String(p).padStart(12,'0'),sku:'P'+p,name:'Product '+p,quantity:[4,6,3,5][i]}));
+const selection=values=>items.map((p,i)=>({product_id:p.product_id,available_quantity:values[i],note:''}));
+test('full and partial quantities quoted; unavailable remainder separated',()=>{const original=JSON.stringify(items),d=splitEnquiry(items,selection([4,2,0,5]));assert.deepEqual(d.quoted.map(p=>[p.sku,p.quantity]),[['P1',4],['P2',2],['P4',5]]);assert.deepEqual(d.unavailable.map(p=>[p.sku,p.unavailable_quantity]),[['P2',4],['P3',3]]);assert.equal(d.quoted[1].availability_label,'Part quantity available');assert.equal(d.snapshot.length,4);assert.equal(d.is_partial,true);assert.equal(JSON.stringify(items),original);});
+test('legacy enquiries default to full requested quantities',()=>{const d=splitEnquiry(items);assert.equal(d.quoted.length,4);assert.equal(d.unavailable.length,0);assert.equal(d.is_partial,false);});
+test('all unavailable yields no priced quote',()=>{const d=splitEnquiry(items,selection([0,0,0,0]));assert.equal(d.can_quote,false);assert.equal(d.quoted.length,0);assert.equal(d.unavailable.length,4);});
+test('negative, excessive and fractional available quantities rejected',()=>{for(const value of [-1,5,1.5])assert.throws(()=>splitEnquiry(items,selection([value,6,3,5])),/Available quantity/);});
+test('unknown or duplicate availability IDs rejected',()=>{const s=selection([4,6,3,5]);s[0]={...s[0],product_id:'ffffffff-ffff-ffff-ffff-ffffffffffff'};assert.throws(()=>splitEnquiry(items,s),/match/);const d=selection([4,6,3,5]);d[1]=d[0];assert.throws(()=>splitEnquiry(items,d),/Duplicate/);});
+test('snapshot and quoted quantities conserve every requested line',()=>{const d=splitEnquiry(items,selection([1,3,2,4]));for(const line of d.snapshot)assert.equal(line.available_quantity+line.unavailable_quantity,line.requested_quantity);});
