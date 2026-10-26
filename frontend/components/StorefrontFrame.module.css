@@ -1,0 +1,6 @@
+.shopping{min-width:0;width:100%}
+.shopping :global(.container){width:100%;max-width:none;padding-inline:24px;box-sizing:border-box}
+.shopping :global(.product-result-card){min-width:0}
+.shopping :global(.product-result-card h2){overflow-wrap:anywhere}
+@media(max-width:1023px){.shopping :global(.container){padding-inline:16px}}
+@media(max-width:479px){.shopping :global(.container){padding-inline:12px}}

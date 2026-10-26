@@ -1,0 +1,4 @@
+.products{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:20px;min-width:0;align-items:start}
+.products>article{min-width:0}
+.products h2{overflow-wrap:anywhere;line-height:1.35}
+@media(max-width:540px){.products{gap:16px}}
