@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {categoryMenuItems} from '../lib/category-menu-items.mjs';
+const href=p=>'/categories/'+p;
+const tree=[{id:'a',name:'Commercial',path:'commercial',product_count:2,children:[{id:'b',name:'Panels',path:'commercial/panels',product_count:1,children:[]},{id:'c',name:'Downlights',path:'commercial/downlights',product_count:0,children:[]}]}];
+test('category menu preserves backend counts and depth',()=>{const rows=categoryMenuItems(tree,href);assert.deepEqual(rows.map(r=>[r.id,r.count,r.depth]),[['a',2,0],['b',1,1],['c',0,1]]);});
+test('subcategory navigation keeps full category routes',()=>assert.equal(categoryMenuItems(tree,href)[1].href,'/categories/commercial/panels'));
+test('overlapping category counts are not added together',()=>{const input=[{...tree[0],product_count:3,children:tree[0].children.map(c=>({...c,product_count:3}))}];assert.equal(categoryMenuItems(input,href)[0].count,3);});
+test('category menu data does not mutate source categories',()=>{const before=JSON.stringify(tree);categoryMenuItems(tree,href);assert.equal(JSON.stringify(tree),before);assert.deepEqual(categoryMenuItems([],href),[]);});
+const source=readFileSync(new URL('../components/SiteHeader.tsx',import.meta.url),'utf8');
+const css=readFileSync(new URL('../components/SiteHeader.module.css',import.meta.url),'utf8');
+test('source layout places top-row actions before the separate category row',()=>{const row=source.slice(source.indexOf('return <header'));const category=row.indexOf('className={styles.categoryBar}');for(const item of ['className={styles.brand}','className={styles.search}','Become a reseller','<HowToBuyFloater','className={styles.wishlist}'])assert.ok(row.indexOf(item)>=0&&row.indexOf(item)<category);assert.ok(css.includes('grid-template-columns:20% minmax(180px,1fr) auto auto auto'));assert.ok(css.includes('flex-wrap:nowrap'));});
+test('mobile header keeps menu actions and portrait counts',()=>{assert.ok(source.includes('setGuideRequest(n=>n+1)'));assert.ok(source.includes('Open product search'));assert.ok(source.includes('Open category menu'));assert.ok(source.includes('categoryMenuItems(c.children,categoryHref)'));assert.ok(css.includes('.search,.desktopAction{display:none}'));});
+test('root layout no longer mounts a second floating guide',()=>{const root=readFileSync(new URL('../app/layout.tsx',import.meta.url),'utf8');assert.ok(!root.includes('HowToBuyFloater'));assert.equal((source.match(/<HowToBuyFloater/g)||[]).length,1);});
+test('redundant category strip is removed from the visible listing layout',()=>{const layout=readFileSync(new URL('../components/ShoppingListingLayout.module.css',import.meta.url),'utf8');assert.ok(layout.includes('.heading nav[aria-label=Categories],.heading nav[aria-label=Subcategories]{display:none}'));assert.ok(layout.includes("grid-template-areas:'breadcrumbs title' '. description'"));});

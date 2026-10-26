@@ -1,0 +1,1 @@
+export function categoryMenuItems(nodes,categoryHref,depth=0){return nodes.flatMap(n=>[{id:n.id,name:n.name,href:categoryHref(n.path),depth,count:n.product_count},...categoryMenuItems(n.children,categoryHref,depth+1)]);}
