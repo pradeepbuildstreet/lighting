@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {emptyDraft,envelope,addTag} from '../lib/admin-tag-product-editor.mjs';
+const id=n=>n.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111';
+const kind={id:id(100),is_active:true,entry_profile:'general'};
+const draft=n=>({...emptyDraft(),sku:'TRIAL',name:'Product',product_kind_id:kind.id,category_ids:Array.from({length:n},(_,i)=>id(i+1))});
+test('30 categories remain accepted',()=>assert.equal(envelope(draft(30),kind).product.category_ids.length,30));
+test('31 categories raise a recoverable validation error and retain the draft',()=>{const d=draft(31),before=JSON.stringify(d);assert.throws(()=>envelope(d,kind),e=>e.status===400&&e.code==='validation'&&/30 categories/.test(e.message));assert.equal(JSON.stringify(d),before);});
+test('corrected draft can be submitted without reload',()=>{const d=draft(31);try{envelope(d,kind);}catch(e){assert.equal(e.status,400);}d.category_ids=d.category_ids.slice(0,30);assert.equal(envelope(d,kind).product.category_ids.length,30);});
+test('malformed category and tag lists fail as validation, not uncertain writes',()=>{for(const patch of [{category_ids:null},{tags:null}])assert.throws(()=>envelope({...draft(1),...patch},kind),e=>e.status===400);});
+test('inactive kind and excessive tags are recoverable',()=>{assert.throws(()=>envelope(draft(1),{...kind,is_active:false}),e=>e.status===400);assert.throws(()=>envelope({...draft(1),tags:Array.from({length:201},(_,i)=>({id:id(i+1)}))},kind),e=>e.status===400);});
+test('revision errors retain conflict protection',()=>assert.throws(()=>envelope({...draft(1),id:id(200),revision:''},kind),e=>e.status===409));
+test('the existing write-error policy does not lock a local validation failure',()=>{let blocked=false;try{envelope(draft(31),kind);}catch(e){const committed=false;if(committed||e.status!==400)blocked=true;}assert.equal(blocked,false);});
+test('tag cap remains 200',()=>{const tags=Array.from({length:200},(_,i)=>({id:id(i+1)}));assert.throws(()=>addTag(tags,{id:id(300)}),e=>e.status===400);assert.equal(tags.length,200);});

@@ -1,0 +1,15 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {createTagProductRouter,payload}=require('../api/catalogue-tag-products');
+const C=require('../services/catalogue-tag-product-core');
+const id=n=>n.toString(16).padStart(8,'0')+'-1111-4111-8111-111111111111';
+const product=n=>({sku:'TRIAL',name:'Product',product_kind_id:id(100),currency:'INR',category_ids:Array.from({length:n},(_,i)=>id(i+1))});
+function response(){return {statusCode:200,status(n){this.statusCode=n;return this;},json(value){this.body=value;return this;}};}
+function harness(){let transactions=0,writes=0;const routes={},router={use(){},get(path,handler){routes['GET '+path]=handler;},post(path,handler){routes['POST '+path]=handler;},put(path,handler){routes['PUT '+path]=handler;}};createTagProductRouter({express:{Router:()=>router},db:{},products:{transaction:async(actor,work)=>{transactions++;return work({query:async()=>({rows:[{storage_ready:true,activated:true,publication_ready:true}]}),writeProduct:async(key,p)=>{C.normalise(p,{creating:!key});writes++;return {id:key||id(500)};}});}}});return {routes,counts:()=>({transactions,writes})};}
+test('31 categories are rejected before any create transaction',async()=>{const h=harness(),res=response();await h.routes['POST /']({admin:{id:id(300)},body:{product:product(31)}},res);assert.equal(res.statusCode,400);assert.match(res.body.error,/30 categories/);assert.deepEqual(h.counts(),{transactions:0,writes:0});});
+test('31 categories are rejected before any update transaction',async()=>{const h=harness(),res=response();await h.routes['PUT /:id']({admin:{id:id(300)},params:{id:id(500)},body:{product:product(31),expected_revision:'1'}},res);assert.equal(res.statusCode,400);assert.deepEqual(h.counts(),{transactions:0,writes:0});});
+test('30 categories use the normal validated write path',async()=>{const h=harness(),res=response();await h.routes['POST /']({admin:{id:id(300)},body:{product:product(30)}},res);assert.equal(res.statusCode,201);assert.deepEqual(h.counts(),{transactions:1,writes:1});});
+test('valid request after an invalid request succeeds without restarting the router',async()=>{const h=harness(),bad=response(),good=response();await h.routes['POST /']({admin:{id:id(300)},body:{product:product(31)}},bad);await h.routes['POST /']({admin:{id:id(300)},body:{product:product(1)}},good);assert.equal(bad.statusCode,400);assert.equal(good.statusCode,201);assert.equal(h.counts().writes,1);});
+test('replacement updates still require category assignments',()=>assert.throws(()=>payload({product:{sku:'X'},expected_revision:'1'},true),e=>e.status===400));
+test('invalid category collection is recoverably rejected',()=>{for(const value of [null,'invalid',{}])assert.throws(()=>payload({product:{category_ids:value}},false),e=>e.status===400);});
+test('core service remains authoritative for duplicate IDs',()=>{const p=product(2);p.category_ids[1]=p.category_ids[0];assert.throws(()=>C.normalise(p,{creating:true}),e=>e.status===400);});

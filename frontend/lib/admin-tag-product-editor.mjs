@@ -1,6 +1,21 @@
+function validation(message,status=400){throw Object.assign(new Error(message),{status,code:status===409?'conflict':'validation'});}
 export function emptyDraft(){return {id:'',revision:'',sku:'',name:'',product_kind_id:'',brand:'',model_number:'',description:'',selling_price:'',currency:'INR',is_active:false,category_ids:[],primary_category_id:'',tags:[],attributes:{light_source_mode:null,length_mm:'',breadth_mm:'',height_mm:'',wattage:'',lumens:''}};}
 export function draftFromProduct(p){if(!p.attributes?.product_kind_id)throw new Error('This product has no tag-model attributes. Use the legacy workspace; automatic conversion is not supported.');return {...emptyDraft(),...Object.fromEntries(['id','revision','sku','name','brand','model_number','description','selling_price','currency','is_active','category_ids','primary_category_id','tags'].map(k=>[k,p[k]??emptyDraft()[k]])),product_kind_id:p.attributes.product_kind_id,attributes:{...emptyDraft().attributes,...p.attributes}};}
-export function envelope(d,kind){if(!kind||kind.id!==d.product_kind_id||kind.is_active!==true)throw new Error('Choose an active product kind');if(d.category_ids.length>30||d.tags.length>200)throw new Error('At most 30 categories and 200 tags per product');const blank=v=>v===''||v===undefined||v===null?null:v;const a=Object.fromEntries(['length_mm','breadth_mm','height_mm'].map(k=>[k,blank(d.attributes[k])]));a.light_source_mode=kind.entry_profile==='fixture'?(d.attributes.light_source_mode||'replaceable'):(kind.fixed_source_mode||null);a.wattage=kind.entry_profile==='light_source'?blank(d.attributes.wattage):null;a.lumens=kind.entry_profile==='light_source'?blank(d.attributes.lumens):null;const product={...Object.fromEntries(['sku','name','brand','model_number','description','selling_price','currency','is_active','product_kind_id','category_ids','primary_category_id'].map(k=>[k,d[k]])),primary_category_id:d.primary_category_id||null,attributes:a,tag_ids:d.tags.map(t=>t.id),tag_mode:'replace'};if(d.id&&!/^[1-9]\d*$/.test(String(d.revision)))throw new Error('Reload the product revision');return d.id?{product,expected_revision:String(d.revision)}:{product};}
+export function envelope(d,kind){
+ if(!kind||kind.id!==d.product_kind_id||kind.is_active!==true)validation('Choose an active product kind');
+ if(!Array.isArray(d.category_ids))validation('Category assignments must be a list.');
+ if(d.category_ids.length>30)validation('At most 30 categories per product. Remove a category before adding another.');
+ if(!Array.isArray(d.tags))validation('Tag assignments must be a list.');
+ if(d.tags.length>200)validation('At most 200 tags per product. Remove a tag before adding another.');
+ const blank=v=>v===''||v===undefined||v===null?null:v;
+ const a=Object.fromEntries(['length_mm','breadth_mm','height_mm'].map(k=>[k,blank(d.attributes[k])]));
+ a.light_source_mode=kind.entry_profile==='fixture'?(d.attributes.light_source_mode||'replaceable'):(kind.fixed_source_mode||null);
+ a.wattage=kind.entry_profile==='light_source'?blank(d.attributes.wattage):null;
+ a.lumens=kind.entry_profile==='light_source'?blank(d.attributes.lumens):null;
+ const product={...Object.fromEntries(['sku','name','brand','model_number','description','selling_price','currency','is_active','product_kind_id','category_ids','primary_category_id'].map(k=>[k,d[k]])),primary_category_id:d.primary_category_id||null,attributes:a,tag_ids:d.tags.map(t=>t.id),tag_mode:'replace'};
+ if(d.id&&!/^[1-9]\d*$/.test(String(d.revision)))validation('Reload the product revision',409);
+ return d.id?{product,expected_revision:String(d.revision)}:{product};
+}
 export function assignable(c,rows){const seen=new Set();let n=c;if(c?.allow_direct_products!==true)return false;while(n){if(!n.is_active||seen.has(n.id))return false;seen.add(n.id);if(!n.parent_id)return true;n=rows.find(r=>r.id===n.parent_id);}return false;}
 export function tagSections(tags,groups){const applicable=new Set(groups);return {filter:tags.filter(t=>applicable.has(t.tag_group_id)),information:tags.filter(t=>!applicable.has(t.tag_group_id))};}
-export function addTag(tags,tag){if(tags.some(t=>t.id===tag.id))return tags;if(tags.length>=200)throw new Error('At most 200 tags');return [...tags,tag];}
+export function addTag(tags,tag){if(tags.some(t=>t.id===tag.id))return tags;if(tags.length>=200)validation('At most 200 tags');return [...tags,tag];}

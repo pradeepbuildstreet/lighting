@@ -4,6 +4,11 @@ const PRODUCT_KEYS=new Set(['sku','name','product_kind_id','brand','model_number
 function payload(body,updating){
  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['product','expected_revision'].includes(k)))C.fail('Use a product and expected_revision envelope');
  const product=body.product;if(!product||typeof product!=='object'||Array.isArray(product)||Object.keys(product).some(k=>!PRODUCT_KEYS.has(k)))C.fail('Invalid product fields; publication and review fields are not accepted');
+ if(updating&&!Object.hasOwn(product,'category_ids'))C.fail('Category assignments are required for replacement updates');
+ if(Object.hasOwn(product,'category_ids')){
+  if(!Array.isArray(product.category_ids))C.fail('Category assignments must be a list.');
+  if(product.category_ids.length>30)C.fail('At most 30 categories per product. Remove a category before adding another.');
+ }
  let revision=null;
  if(updating){const v=body.expected_revision;if(typeof v==='number'&&(!Number.isSafeInteger(v)||v<=0))C.fail('Expected revision must be a positive safe integer or integer string');if(!['string','number'].includes(typeof v)||!/^[1-9]\d{0,18}$/.test(String(v))||BigInt(v)>9223372036854775807n)C.fail('Valid expected_revision required');revision=String(v);}
  else if(Object.hasOwn(body,'expected_revision'))C.fail('Create does not accept expected_revision');
