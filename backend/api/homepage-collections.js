@@ -1,6 +1,6 @@
 "use strict";
 function createRouters({express,db,appDb,requireAdmin,publicCatalogue,enabled,rateLimit}){
- const service=require('../services/homepage-collections').createService({db,appDb,publicCatalogue}),publicRouter=express.Router(),adminRouter=express.Router();
+ const service=require('../services/homepage-admin-workspace').createService({db,appDb,publicCatalogue}),publicRouter=express.Router(),adminRouter=express.Router();
  const headers=(_req,res,next)=>{res.set({'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});next();};
  const route=fn=>async(req,res)=>{try{await fn(req,res);}catch(e){const status=[400,404,409].includes(e.status)?e.status:e.code==='23505'?409:503;res.status(status).json({error:e.status?e.message:status===409?'Collection slug already exists':'Homepage features temporarily unavailable'});}};
  publicRouter.use(headers);publicRouter.use((_req,res,next)=>enabled()?next():res.status(404).json({error:'Not found'}));
