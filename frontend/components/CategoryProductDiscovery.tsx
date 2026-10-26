@@ -4,7 +4,7 @@ import type {CatalogueProduct} from '@/lib/catalogue-types';
 import {CatalogueProductCards} from './CatalogueProductCards';
 import Link from 'next/link';
 import styles from './CategoryProductDiscovery.module.css';
-const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function CategoryProductDiscovery({productId}:{productId:string}){
  if(!UUID.test(productId))return null;
  let popular:CatalogueProduct[],latest:CatalogueProduct[],category:{id:string;name:string;path:string};
@@ -23,7 +23,7 @@ export async function CategoryProductDiscovery({productId}:{productId:string}){
  }catch(_){return <p className={styles.notice} role="status">Category discoveries are temporarily unavailable.</p>;}
  if(!popular.length&&!latest.length)return null;
  return <div className={styles.root}>
-  {!!popular.length&&<section aria-label="Most enquired in this category"><div className={styles.heading}><h2>Most enquired in this category</h2><Link href={categoryHref(category.path)}>Browse {category.name}</Link></div><p className={styles.description}>Ranked by distinct submitted customer enquiries.</p><CatalogueProductCards products={popular} browseCategory={category.path}/></section>}
-  {!!latest.length&&<section aria-label="Latest in this category"><div className={styles.heading}><h2>Latest in this category</h2><Link href={categoryHref(category.path)}>Browse {category.name}</Link></div><CatalogueProductCards products={latest} browseCategory={category.path}/></section>}
+  {!!popular.length&&<section aria-label="Most enquired in this category"><div className={styles.heading}><h2>Most enquired in this category</h2><Link href={categoryHref(category.path)}>Browse {category.name}</Link></div><p className={styles.description}>Ranked by distinct submitted customer enquiries.</p><CatalogueProductCards products={popular} browseCategory={category.path} maxRows={3}/></section>}
+  {!!latest.length&&<section aria-label="Latest in this category"><div className={styles.heading}><h2>Latest in this category</h2><Link href={categoryHref(category.path)}>Browse {category.name}</Link></div><CatalogueProductCards products={latest} browseCategory={category.path} maxRows={3}/></section>}
  </div>;
 }
