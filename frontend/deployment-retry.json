@@ -1,9 +1,19 @@
 {
-  "reason": "User requested release auto-build/deployment after approving tag-group and tag administration",
-  "source_commit": "06442c0148f0d83e902a4e77e3a29f49b564971c",
-  "requested_at_local": "2026-10-25 00:00 IST",
-  "user_accepted_scope": "Tag-group and tag reference administration only",
-  "application_changes": false,
+  "reason": "Batched frontend recovery after confirmed BulkOrderEditor hierarchy row TypeScript inference failure",
+  "source_commit": "f55376e8753837f251da9383b8a3add0b60f85a6",
+  "included_commits": [
+    "5b044d9ad6d497af274d27e89e2dd13a25624247",
+    "e22aa8275e9b1d3683df20effd09b93b35517771",
+    "f55376e8753837f251da9383b8a3add0b60f85a6"
+  ],
+  "requested_at_local": "2026-10-26 05:50 IST",
+  "user_accepted_scope": "Preserve the three cumulative release batches, correct ordering row types and request one frontend rebuild",
+  "application_changes": true,
   "database_changes": false,
-  "activation_changes": false
+  "activation_changes": false,
+  "verification": {
+    "confirmed_error": "Property parent_id missing from the inferred non-category hierarchy row type",
+    "type_check": "pending hosted build",
+    "production_build": "pending hosted build"
+  }
 }
