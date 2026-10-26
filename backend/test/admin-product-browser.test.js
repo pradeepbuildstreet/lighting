@@ -1,0 +1,15 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');const {normalise,buildWhere}=require('../services/admin-product-browser-core');
+const a='11111111-1111-4111-8111-111111111111',b='22222222-2222-4222-8222-222222222222',g='33333333-3333-4333-8333-333333333333',h='44444444-4444-4444-8444-444444444444';
+test('admin defaults include active/inactive and published/unpublished',()=>{const f=normalise();assert.equal(f.active,null);assert.equal(f.published,null);assert.equal(buildWhere(f).where,'true');});
+test('category browsing includes descendant traversal and cycle guard',()=>{const q=buildWhere(normalise({categories:[a]}));assert.match(q.prefix,/WITH RECURSIVE/);assert.match(q.prefix,/NOT c.id=ANY/);assert.match(q.where,/EXISTS/);assert.deepEqual(q.values,[[a]]);});
+test('dealer filtering uses EXISTS rather than duplicating product rows',()=>assert.match(buildWhere(normalise({dealers:[a,b]})).where,/EXISTS\(SELECT 1 FROM dealer_products/));
+test('tag values are alternatives within each group and groups combine with AND',()=>{const q=buildWhere(normalise({tags:{[g]:[a,b],[h]:[a]}}));assert.equal((q.where.match(/EXISTS/g)||[]).length,2);assert.match(q.where,/ AND EXISTS/);assert.deepEqual(q.values,[g,[a,b],h,[a]]);});
+test('all independent dimensions combine',()=>{const q=buildWhere(normalise({q:'lamp',categories:[a],brands:['Brand'],dealers:[b],active:'false',published:'true'}));assert.deepEqual(q.values,['lamp',[a],['Brand'],[b],false,true]);assert.match(q.where,/p.is_active=\$5::boolean AND p.published=\$6::boolean/);});
+test('hostile brand and query strings are parameters, never SQL fragments',()=>{const hostile="x'); DROP TABLE products;--",q=buildWhere(normalise({q:hostile,brands:[hostile]}));assert.ok(!q.where.includes(hostile));assert.deepEqual(q.values,[hostile,[hostile]]);});
+test('empty selected-only list matches no products',()=>assert.equal(buildWhere(normalise({only_ids:[]})).where,'false'));
+test('selected-only scope remains independently bounded',()=>assert.throws(()=>normalise({only_ids:Array(501).fill(a)}),{status:400}));
+test('malformed UUIDs and duplicate IDs are rejected',()=>{assert.throws(()=>normalise({categories:['bad']}),{status:400});assert.throws(()=>normalise({dealers:[a,a]}),{status:400});});
+test('unsupported criteria and malformed tags are rejected',()=>{assert.throws(()=>normalise({sql:'true'}),{status:400});assert.throws(()=>normalise({tags:{[g]:[]}}),{status:400});assert.throws(()=>normalise({tags:{bad:[a]}}),{status:400});});
+test('pagination and boolean status are strictly validated',()=>{for(const page of [0,-1,'1x',10001])assert.throws(()=>normalise({page}),{status:400});assert.equal(normalise({page:'2',active:'true'}).page,2);assert.throws(()=>normalise({published:'yes'}),{status:400});});
+test('search text uses literal position matching rather than wildcard SQL',()=>assert.match(buildWhere(normalise({q:'50%_lamp'})).where,/position\(lower/));
