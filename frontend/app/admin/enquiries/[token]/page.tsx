@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { EnquiryDetail } from "@/components/EnquiryDetail";
+import { DealerEnquiryPanel } from "@/components/DealerEnquiryPanel";
 import { AdminShell } from "@/components/AdminShell";
 
 export const metadata: Metadata = {
@@ -11,6 +12,7 @@ export default function EnquiryDetailPage({ params }: { params: { token: string 
   return (
     <AdminShell active="enquiries">
       <EnquiryDetail token={params.token} />
+      <DealerEnquiryPanel key={params.token} token={params.token} />
     </AdminShell>
   );
 }

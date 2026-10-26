@@ -1,0 +1,12 @@
+"use strict";
+const express=require('express'),rateLimit=require('express-rate-limit'),db=require('../db/catalogue'),{requireAdmin}=require('../middleware/require-admin'),{uuid}=require('../services/public-catalogue-v1'),S=require('../services/dealer-enquiry-export');
+const router=express.Router();let exportsInFlight=0;
+router.use(requireAdmin);router.use((_req,res,next)=>{res.set({'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','X-Robots-Tag':'noindex, nofollow','Referrer-Policy':'no-referrer'});next();});
+router.use(rateLimit({windowMs:60000,limit:30,standardHeaders:'draft-7',legacyHeaders:false}));
+const route=fn=>async(req,res)=>{try{await fn(req,res);}catch(e){console.error(JSON.stringify({event:'dealer_enquiry_export_failed',code:e.code||'EXPORT_ERROR',status:e.status||503}));if(res.headersSent)return res.destroy();const status=[400,404,409,503].includes(e.status)?e.status:503;res.status(status).json({error:e.status?e.message:'Dealer enquiry export is temporarily unavailable'});}};
+async function exportJob(work){if(exportsInFlight>=2)throw Object.assign(Error('Other exports are running. Please retry shortly.'),{status:503});exportsInFlight++;try{return await work();}finally{exportsInFlight--;}}
+function download(res,data,name,type){res.set({'Content-Type':type,'Content-Disposition':'attachment; filename="'+name+'"','Content-Length':String(data.length)});res.send(data);}
+router.get('/:token',route(async(req,res)=>res.json(S.manifest(await S.snapshot(db,req.params.token)))));
+router.get('/:token/dealers/:dealerId/pdf',route(async(req,res)=>{const dealerId=uuid(req.params.dealerId);await exportJob(async()=>{const data=await S.snapshot(db,req.params.token);S.verify(data,req.query.expected);const group=data.dealers.find(g=>g.dealer_id===dealerId);if(!group)throw Object.assign(Error('Dealer does not supply products in this enquiry'),{status:404});if(!group.ready)throw Object.assign(Error(group.issues.join('; ')),{status:409});const pictures=await S.images([group]);download(res,await S.pdf(group,data,pictures),S.filename(group,data.reference),'application/pdf');});}));
+router.get('/:token/download-all',route(async(req,res)=>{await exportJob(async()=>{const data=await S.snapshot(db,req.params.token);S.verify(data,req.query.expected);download(res,await S.archive(data),'Luminoza-Dealer-Enquiries-'+data.reference+'.zip','application/zip');});}));
+module.exports=router;

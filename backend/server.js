@@ -133,6 +133,7 @@ for (const [mount, file] of [
   ["/api/auth", "auth"],
   ["/api/wishlists", "wishlists"],
   ["/api/offers", "offers"],
+  ["/api/admin/dealer-enquiries", "dealer-enquiries"],
 ]) {
   app.use(mount, require(`./api/${file}`));
 }
