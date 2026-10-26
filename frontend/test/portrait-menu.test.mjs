@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {balancedMenuColumns,menuPosition} from '../lib/portrait-menu.mjs';
+for(const [n,sizes] of [[0,[]],[1,[1]],[10,[10]],[11,[6,5]],[20,[10,10]],[21,[7,7,7]],[31,[8,8,8,7]]])test(`balanced portrait menu for ${n} items`,()=>{const items=Array.from({length:n},(_,i)=>i),columns=balancedMenuColumns(items);assert.deepEqual(columns.map(c=>c.length),sizes);assert.deepEqual(columns.flat(),items);});
+test('all menu sizes preserve items and use at most ten rows per column',()=>{for(let n=1;n<=500;n++){const items=Array.from({length:n},(_,i)=>i),columns=balancedMenuColumns(items),sizes=columns.map(c=>c.length);assert.ok(Math.max(...sizes)<=10);assert.ok(Math.max(...sizes)-Math.min(...sizes)<=1);assert.deepEqual(columns.flat(),items);assert.equal(columns.length,Math.ceil(n/10));}});
+test('menu splitting does not mutate its input',()=>{const items=Array.from({length:31},(_,i)=>({id:i})),before=JSON.stringify(items);balancedMenuColumns(items);assert.equal(JSON.stringify(items),before);});
+test('right-edge dropdown stays within viewport when it fits',()=>{const p=menuPosition({left:1100,bottom:100},{width:440},{width:1280,height:800});assert.equal(p.left,828);assert.equal(p.left+440,1268);});
+test('left edge and vertical height are bounded',()=>{const p=menuPosition({left:-5,bottom:200},{width:200},{width:1024,height:600});assert.equal(p.left,12);assert.equal(p.top,200);assert.equal(p.maxHeight,388);});
+test('oversized menu starts at a safe edge for internal horizontal scrolling',()=>assert.equal(menuPosition({left:800,bottom:100},{width:1400},{width:1024,height:800}).left,12));
+test('short desktop viewport retains a visible scroll area',()=>{const p=menuPosition({left:50,bottom:250},{width:200},{width:1024,height:280});assert.equal(p.top,224);assert.equal(p.maxHeight,44);});

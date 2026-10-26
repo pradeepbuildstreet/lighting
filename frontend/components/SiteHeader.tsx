@@ -7,6 +7,7 @@ import {getCatalogueClient,categoryHref} from '@/lib/catalogue-client';
 import type {CatalogueCategory} from '@/lib/catalogue-types';
 import {navLinks} from '@/lib/catalogue-route-model';
 import {useWishlist} from './WishlistProvider';
+import {PortraitCategoryMenu} from './PortraitCategoryMenu';
 import styles from './SiteHeader.module.css';
 import ui from './ShoppingInteractions.module.css';
 function HeaderContent(){
@@ -32,7 +33,7 @@ function HeaderContent(){
     <Link prefetch={false} href="/products" onMouseEnter={()=>setDesktopOpen('')} onFocus={()=>setDesktopOpen('')}>All Products</Link>
     {categories.map(category=><div key={category.id} className={ui.navItem} data-category-menu onMouseEnter={()=>{if(window.matchMedia('(hover:hover)').matches)setDesktopOpen(category.id);}}>
      <Link prefetch={false} href={categoryHref(category.path)} onFocus={()=>setDesktopOpen(category.id)} onClick={()=>setDesktopOpen('')}>{category.name}</Link>
-     {!!category.children.length&&<><button type="button" aria-label={`Show ${category.name} subcategories`} aria-expanded={desktopOpen===category.id} aria-controls={desktopOpen===category.id?'category-menu-'+category.id:undefined} onClick={()=>setDesktopOpen(current=>current===category.id?'':category.id)}>▾</button>{desktopOpen===category.id&&<div id={'category-menu-'+category.id} className={ui.submenu}>{navLinks(category.children,{categoryHref}).map(child=><Link prefetch={false} key={child.id} href={child.href} style={{paddingInlineStart:12+child.depth*12}} onClick={()=>setDesktopOpen('')}>{child.name}</Link>)}</div>}</>}
+     {!!category.children.length&&<><button type="button" aria-label={`Show ${category.name} subcategories`} aria-expanded={desktopOpen===category.id} aria-controls={desktopOpen===category.id?'category-menu-'+category.id:undefined} onClick={()=>setDesktopOpen(current=>current===category.id?'':category.id)}>▾</button>{desktopOpen===category.id&&<PortraitCategoryMenu id={'category-menu-'+category.id} items={navLinks(category.children,{categoryHref})} onNavigate={()=>setDesktopOpen('')}/>}</>}
     </div>)}
     {unavailable&&<button type="button" onClick={()=>setAttempt(n=>n+1)}>Retry categories</button>}
    </nav>
