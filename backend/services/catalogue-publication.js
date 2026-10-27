@@ -6,7 +6,6 @@ function fail(status,message){const e=new Error(message);e.status=status;throw e
 function corpusDigest(rows){return crypto.createHash('sha256').update(JSON.stringify(rows.map(p=>[p.id,String(p.revision),p.is_active]).sort((a,b)=>a[0].localeCompare(b[0])))).digest('hex');}
 function blockers(product,facts){
  const reasons=[];
- if(!product.is_active)reasons.push('Product must be active');
  if(product.selling_price===null||product.selling_price===undefined||!Number.isFinite(Number(product.selling_price))||Number(product.selling_price)<0)reasons.push('Valid public selling price required');
  if(product.review_status!=='approved'||String(product.approved_revision)!==String(product.revision)||!product.approved_by)reasons.push('Current distinct approval required');
  if(product.duplicate_of_product_id)reasons.push('Duplicate products cannot be published');

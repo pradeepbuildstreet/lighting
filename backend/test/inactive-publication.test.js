@@ -1,0 +1,10 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {blockers}=require('../services/catalogue-publication');
+const {statusFromRow}=require('../services/catalogue-visibility');
+const product={revision:6,is_active:false,review_status:'approved',approved_revision:6,approved_by:'reviewer',selling_price:'100',duplicate_of_product_id:null};
+const facts={primaryCategory:true,primaryImage:true,tagModel:true,modelPrerequisite:true,modelActivated:true,activeSpecType:true,audit:{status:'completed',product_revision:6,algorithm_version:'tags-evidence-v2',corpus_digest:'evidence'},review:{decision:'approve_distinct',reviewer_id:'reviewer'}};
+test('inactive product with complete publication requirements is publishable',()=>{assert.deepEqual(blockers(product,facts),[]);assert.equal(product.is_active,false);});
+test('activation does not change publication blockers',()=>assert.deepEqual(blockers(product,facts),blockers({...product,is_active:true},facts)));
+test('inactive products still require price, approval and a primary image',()=>{assert.ok(blockers({...product,selling_price:null},facts).includes('Valid public selling price required'));assert.ok(blockers({...product,approved_revision:5},facts).includes('Current distinct approval required'));assert.ok(blockers(product,{...facts,primaryImage:false}).includes('Primary image required'));});
+test('inactive published product remains hidden with an inactivity warning',()=>{const row={active_ok:false,published_ok:true,active_dealer_ok:true,review_ok:true,revision_ok:true,not_duplicate_ok:true,price_ok:true,duplicate_approval_ok:true,primary_category_ok:true,primary_image_ok:true,category_tree_ok:true,tag_model:true,model_prerequisite:true,model_activated:true,product_type_spec_ok:true,in_public_view:false};const result=statusFromRow(row);assert.equal(result.published,true);assert.equal(result.visible,false);assert.deepEqual(result.reasons,['Product is inactive.']);});
