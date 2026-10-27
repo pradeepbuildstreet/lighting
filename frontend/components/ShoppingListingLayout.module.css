@@ -1,13 +1,9 @@
 .page{padding-block:12px;min-width:0;color:#555b60}
-.heading{display:grid;gap:8px;margin:0;padding:12px 0;text-align:center;border-bottom:1px solid #d9ded5;min-width:0}
-.categoryRow{display:flex;align-items:baseline;justify-content:center;gap:18px;white-space:nowrap;overflow-x:auto;min-width:0}
-.title{display:flex;align-items:baseline;justify-content:center;gap:12px;flex:0 0 auto}.title h1{font:400 22px/1.4 Georgia,'Times New Roman',serif;margin:0}.title span{font:13px/1.4 Arial,sans-serif;color:#69756f}
-.categories{display:flex;align-items:center;gap:16px;flex:0 0 auto;font:400 16px/1.4 Georgia,'Times New Roman',serif}.categories a{color:inherit;text-decoration:none;background:transparent}.categories a:hover{text-decoration:underline}
-.description{margin:0;text-align:center;font:13px/1.5 Arial,sans-serif;color:#69756f;min-height:20px}
-.browsingRow{display:flex;align-items:center;justify-content:space-between;gap:20px;min-height:52px;border-bottom:1px solid #d9ded5;min-width:0}.breadcrumb{flex:1;min-width:0;overflow-x:auto}.breadcrumb ol{display:flex;flex-wrap:nowrap;white-space:nowrap;align-items:center;gap:8px;margin:0;padding:0;list-style:none;font-size:13px}
-.controls{display:flex;align-items:center;justify-content:flex-end;gap:12px;flex:0 0 auto}.controls button{min-height:44px;padding:6px 10px;border:0;background:transparent;color:inherit;cursor:pointer;font:14px Arial,sans-serif}.controls button:hover{text-decoration:underline}
-.selections{min-height:48px;min-width:0;border-bottom:1px solid #d9ded5}.selections>section{margin:0;padding:4px 0}.selections>section>div:first-child{flex-wrap:nowrap}.selections>section>p:last-child{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-.body{display:block;width:100%;min-width:0;padding-top:16px}.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.fields label{min-width:0}
-.page :focus-visible{outline:2px solid #c45435;outline-offset:2px}
-:global(body):has(.page) :global(.site-header)>div:nth-child(2){display:none}
-@media(max-width:639px){.browsingRow{gap:8px}.controls{gap:2px}.controls button{font-size:12px;padding-inline:5px}.categoryRow{justify-content:flex-start}.title h1{font-size:19px}.fields{grid-template-columns:minmax(0,1fr)}}
+.heading{display:grid;grid-template-columns:minmax(220px,.9fr) minmax(0,1.1fr);grid-template-areas:'breadcrumbs title' '. description';gap:6px 24px;align-items:start;margin-bottom:8px;min-width:0;border:0}
+.heading>nav:first-child{grid-area:breadcrumbs;min-width:0}.heading>nav:first-child>ol{margin-bottom:0;font-size:13px;line-height:1.4}
+.title{grid-area:title;display:flex;align-items:baseline;justify-content:flex-end;gap:12px;flex-wrap:wrap;margin:0;text-align:right;min-width:0}.title h1{font-size:25px;font-weight:600;margin:0;line-height:1.25;color:inherit}.title span{font:13px/1.4 Arial,sans-serif;color:#69756f}
+.description{grid-area:description;justify-self:end;max-width:680px;margin:0;font:13px/1.5 Arial,sans-serif;color:#69756f;text-align:right}
+.heading nav[aria-label=Categories],.heading nav[aria-label=Subcategories]{display:none}
+.heading a:focus-visible{outline:2px solid #c45435;outline-offset:2px}.page .body{padding:0;gap:20px}.page .side{top:var(--shop-header-height,0px);max-height:calc(100dvh - var(--shop-header-height,0px) - 12px)}.page .side form{gap:8px;color:#555b60}.page .side form>div:first-child{min-height:52px;padding-block:6px;box-sizing:border-box;border-block:1px solid #d9ded5}.toolbarSlot{margin-top:0!important}.page .toolbarSlot form,.page .toolbarSlot [aria-label='Product browsing controls']{box-shadow:none;color:#555b60;border-block:1px solid #d9ded5}
+@media(max-width:1023px){.page{padding-block:10px}.page .body{gap:0}.heading{margin-bottom:6px}.title h1{font-size:23px}.page .side{position:static;max-height:none}.page .side form>div:first-child{min-height:0}}
+@media(max-width:639px){.heading{grid-template-columns:minmax(0,1fr);grid-template-areas:'breadcrumbs' 'title' 'description';gap:8px}.title{justify-content:flex-start;text-align:left}.description{justify-self:start;text-align:left;max-width:none}}
