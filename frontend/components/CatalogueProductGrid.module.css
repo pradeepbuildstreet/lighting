@@ -7,3 +7,5 @@
 @container discovery-cards (min-width:1140px){.threeRows{grid-template-columns:repeat(5,minmax(0,1fr))}.threeRows>article:nth-child(n){display:block}.threeRows>article:nth-child(n+16){display:none}}
 @container discovery-cards (min-width:1380px){.threeRows{grid-template-columns:repeat(6,minmax(0,1fr))}.threeRows>article:nth-child(n){display:block}.threeRows>article:nth-child(n+19){display:none}}
 @media(max-width:540px){.products{gap:16px}}
+@media(min-width:360px) and (max-width:639px){.products:not(.threeRows){grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}}
+@media(max-width:359px){.products:not(.threeRows){grid-template-columns:minmax(0,1fr);gap:12px}}
