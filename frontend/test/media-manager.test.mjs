@@ -1,0 +1,9 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {validateFiles,metadata,mediaSource,metadataMatches,MAX_MEDIA_BYTES} from '../app/admin/catalogue/media-manager.mjs';
+test('file queue validates all files before upload',()=>{assert.equal(validateFiles([{name:'a',type:'image/png',size:1}]).length,1);assert.throws(()=>validateFiles([]));assert.throws(()=>validateFiles(Array(11).fill({name:'a',type:'image/png',size:1})));assert.throws(()=>validateFiles([{name:'a',type:'image/png',size:MAX_MEDIA_BYTES+1}]));assert.throws(()=>validateFiles([{name:'a',type:'image/svg+xml',size:1}]));});
+test('metadata normalizes fields and carries the revision',()=>assert.deepEqual(metadata({caption:' a ',alt_text:' ',sort_order:'2',is_primary:true,media_type:'image'},9),{caption:'a',alt_text:null,sort_order:2,is_primary:true,revision:'9'}));
+test('invalid order and video primary are rejected',()=>{for(const sort_order of ['',-1,1.2,Infinity])assert.throws(()=>metadata({sort_order},1));assert.throws(()=>metadata({sort_order:0,is_primary:true,media_type:'video'},1));});
+test('private previews use authenticated admin file route',()=>assert.equal(mediaSource('p',{id:'m',storage_key:'key'}),'/api/admin/catalogue/products/p/media/m/file'));
+test('external previews reject unsafe URLs',()=>{for(const external_url of ['javascript:alert(1)','http://example.com/a','https://user:pass@example.com/a','bad'])assert.equal(mediaSource('p',{external_url}),null);assert.equal(mediaSource('p',{external_url:'https://example.com/a'}),'https://example.com/a');});
+test('metadata read-back catches mismatches',()=>{const sent=metadata({caption:'a',sort_order:2,is_primary:false},1);assert.equal(metadataMatches({...sent,sort_order:'2'},sent),true);assert.equal(metadataMatches({...sent,is_primary:true},sent),false);});
