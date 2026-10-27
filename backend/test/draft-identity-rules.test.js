@@ -1,0 +1,17 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {suggestName,pendingIdentity}=require('../services/catalogue-identity-rules');
+const {normalise}=require('../services/catalogue-tag-product-core');
+const input={product_kind_id:'11111111-1111-4111-8111-111111111111'};
+test('names use brand, ordered tag groups and kind',()=>assert.equal(suggestName({brand:' Acme ',kindName:'Fixture',tags:[{group_code:'material',name:'Glass'},{group_code:'finish',name:'Brass'},{group_code:'style',name:'Modern'}]}).name,'Acme Modern Brass Glass Fixture'));
+test('missing components produce a clean kind-only suggestion',()=>assert.equal(suggestName({kindName:'Integrated light'}).name,'Integrated light'));
+test('multi-value ordering is deterministic and duplicate labels collapse',()=>{const tags=['Steel','Glass','Glass'].map(name=>({group_code:'material',name}));assert.equal(suggestName({kindName:'Fixture',tags}).name,'Glass & Steel Fixture');assert.equal(suggestName({kindName:'Fixture',tags:[...tags].reverse()}).name,'Glass & Steel Fixture');});
+test('inactive references are omitted from suggestions',()=>assert.equal(suggestName({kindName:'Fixture',tags:[{group_code:'finish',name:'Brass',is_active:false}]}).name,'Fixture'));
+test('names are not silently truncated',()=>assert.throws(()=>suggestName({brand:'x'.repeat(255),kindName:'Fixture'}),/exceeds/));
+test('suggestions do not mutate manual names or tags',()=>{const product={name:'Manual title',kindName:'Fixture',tags:[]};suggestName(product);assert.equal(product.name,'Manual title');assert.deepEqual(product.tags,[]);});
+test('pending identity requires both SKU and nonblank name',()=>{assert.equal(pendingIdentity({sku:null,name:null}),true);assert.equal(pendingIdentity({sku:'FIX100001',name:' '}),true);assert.equal(pendingIdentity({sku:'FIX100001',name:'Fixture'}),false);});
+test('pending identity requires explicit opt-in',()=>assert.throws(()=>normalise(input,{creating:true}),/SKU/));
+test('opt-in draft accepts null identity and defaults inactive',()=>{const d=normalise(input,{creating:true,allowPendingIdentity:true});assert.equal(d.sku,null);assert.equal(d.name,null);assert.equal(d.is_active,false);});
+test('optional identity does not weaken reference or numeric validation',()=>{assert.throws(()=>normalise({...input,selling_price:'abc'},{creating:true,allowPendingIdentity:true}),/price/);assert.throws(()=>normalise({...input,product_kind_id:'bad'},{creating:true,allowPendingIdentity:true}),/reference/);assert.throws(()=>normalise({...input,sku:'BAD SKU'},{creating:true,allowPendingIdentity:true}),/whitespace/);});
+test('replacement drafts still require category envelope',()=>assert.throws(()=>normalise(input,{allowPendingIdentity:true}),/Category/));
+test('legacy normalization retains existing contract',()=>{const d=normalise({...input,sku:' old-1 ',name:' Legacy '},{creating:true});assert.equal(d.sku,'OLD-1');assert.equal(d.name,'Legacy');assert.equal(d.is_active,true);});

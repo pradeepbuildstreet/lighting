@@ -1,0 +1,11 @@
+# Connected draft identity API and forms
+
+This increment adds the authenticated /draft, /:id/identity and /:id/name-suggestion endpoints under products-v2. Existing version-2 import and legacy create normalization remain strict. Pending identity normalization requires explicit opt-in and the installed migration. Existing SKU updates are rejected in the product service. Content save and one-time SKU assignment run in one audited transaction.
+
+The new-product form checks draft_identity_ready. Before migration it retains SKU/name inputs and the legacy POST; after migration it hides them and creates an inactive unpublished pending draft. ProductIdentityGate routes incomplete identities to a dedicated review form. It offers editable brand/model/name, explicit name suggestion acceptance, removal of current tags, unfinished draft save, and an explicit Assign SKU/save/continue action. Assigned products can return via Review name / identity. Full tag addition, categories, media and publication remain in CatalogueManager after identity completion. No duplicate approval or publication is automatic.
+
+The initial naming rulebook is versioned server code, not an admin-editable master: brand, style, finish, material, kind; at most two distinct sorted labels per group. Per-kind/admin-configurable rule editing is still pending. Suggestions use active references, skip missing groups and reject overlength names instead of silently truncating them.
+
+Twelve pure-function cases passed locally for naming and optional-identity normalization. HTTP protocol/service transaction tests, concurrent database assignments, SQL migrations, browser-null compatibility, type-check, full suites and production build have not been verified. Do not apply migration 07 merely because this commit is present. Complete those checks and review remaining nullable assumptions first.
+
+Still pending: the new two-header-row workbook, dynamic single/multi-select group policies, comma-list parsing and validation, local-folder image staging, create-batch replay protection, SKU/revision master export/update, general editor SKU-field read-only presentation and admin-editable naming rules. The general editor still requires a nonblank name/SKU; the gate ensures the new edit entry path completes identity before entering it. No Supabase migration is applied by this commit.

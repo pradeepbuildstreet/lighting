@@ -1,17 +1,14 @@
 "use strict";
 const C=require('../services/catalogue-tag-product-core');
+const {IDENTITY_READY_SQL}=require('../services/catalogue-tag-products');
+const {suggestName}=require('../services/catalogue-identity-rules');
 const PRODUCT_KEYS=new Set(['sku','name','product_kind_id','brand','model_number','description','selling_price','currency','is_active','category_ids','primary_category_id','tag_ids','tag_mode','attributes']);
 function payload(body,updating){
  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['product','expected_revision'].includes(k)))C.fail('Use a product and expected_revision envelope');
  const product=body.product;if(!product||typeof product!=='object'||Array.isArray(product)||Object.keys(product).some(k=>!PRODUCT_KEYS.has(k)))C.fail('Invalid product fields; publication and review fields are not accepted');
  if(updating&&!Object.hasOwn(product,'category_ids'))C.fail('Category assignments are required for replacement updates');
- if(Object.hasOwn(product,'category_ids')){
-  if(!Array.isArray(product.category_ids))C.fail('Category assignments must be a list.');
-  if(product.category_ids.length>30)C.fail('At most 30 categories per product. Remove a category before adding another.');
- }
- let revision=null;
- if(updating){const v=body.expected_revision;if(typeof v==='number'&&(!Number.isSafeInteger(v)||v<=0))C.fail('Expected revision must be a positive safe integer or integer string');if(!['string','number'].includes(typeof v)||!/^[1-9]\d{0,18}$/.test(String(v))||BigInt(v)>9223372036854775807n)C.fail('Valid expected_revision required');revision=String(v);}
- else if(Object.hasOwn(body,'expected_revision'))C.fail('Create does not accept expected_revision');
+ if(Object.hasOwn(product,'category_ids')){if(!Array.isArray(product.category_ids))C.fail('Category assignments must be a list.');if(product.category_ids.length>30)C.fail('At most 30 categories per product. Remove a category before adding another.');}
+ let revision=null;if(updating){const v=body.expected_revision;if(typeof v==='number'&&(!Number.isSafeInteger(v)||v<=0))C.fail('Expected revision must be a positive safe integer or integer string');if(!['string','number'].includes(typeof v)||!/^[1-9]\d{0,18}$/.test(String(v))||BigInt(v)>9223372036854775807n)C.fail('Valid expected_revision required');revision=String(v);}else if(Object.hasOwn(body,'expected_revision'))C.fail('Create does not accept expected_revision');
  return {product,revision};
 }
 function createTagProductRouter({express,db,audit,products}){
@@ -22,7 +19,11 @@ function createTagProductRouter({express,db,audit,products}){
  const stateSql="SELECT EXISTS(SELECT 1 FROM catalogue_taxonomy_versions WHERE version=2) AS storage_ready,EXISTS(SELECT 1 FROM catalogue_taxonomy_versions WHERE version=3) AS activated,to_regprocedure('public.catalogue_product_model_ready(uuid,text)') IS NOT NULL AS publication_ready";
  const ready=s=>s?.storage_ready===true&&s?.activated===true&&s?.publication_ready===true;
  async function context(actor,work){return service.transaction(actor,async w=>{if(!ready((await w.query(stateSql)).rows[0]))C.fail('Tag product storage, publication prerequisite and coordinated activation are required',503);return work(w);});}
- router.get('/state',route(async(_req,res)=>{const state=(await db.query(stateSql)).rows[0]||{};res.json({format_version:2,storage_ready:state.storage_ready===true,publication_ready:state.publication_ready===true,activated:state.activated===true,write_enabled:ready(state),read_enabled:ready(state)});}));
+ async function identityReady(w){if((await w.query(IDENTITY_READY_SQL)).rows[0]?.ready!==true)C.fail('Draft identity migration is not installed',503);}
+ router.get('/state',route(async(_req,res)=>{const state=(await db.query(stateSql)).rows[0]||{},identity=(await db.query(IDENTITY_READY_SQL)).rows[0]?.ready===true;res.json({format_version:2,storage_ready:state.storage_ready===true,publication_ready:state.publication_ready===true,activated:state.activated===true,write_enabled:ready(state),read_enabled:ready(state),draft_identity_ready:ready(state)&&identity});}));
+ router.post('/draft',route(async(req,res)=>{const {product}=payload(req.body,false);if(C.text(product.sku,'SKU',false,100)||C.text(product.name,'Name',false,255))C.fail('New draft SKU and name are entered during review');if(product.is_active===true)C.fail('New identity-pending drafts must be inactive');const saved=await context(req.admin,async w=>{await identityReady(w);return w.writePendingProduct(null,{...product,sku:null,name:null,is_active:false},null);});res.status(201).json({product:saved});}));
+ router.post('/:id/name-suggestion',route(async(req,res)=>{const id=C.uuid(req.params.id),b=req.body;if(!b||typeof b!=='object'||Array.isArray(b)||Object.keys(b).some(k=>!['brand','tag_ids'].includes(k)))C.fail('Use brand and tag_ids for name suggestions');const brand=C.text(b.brand,'Brand'),ids=C.ids(b.tag_ids||[],200,'tag assignments');const result=await context(req.admin,async w=>{const p=await w.detail(id);if(!p.attributes?.kind_active)C.fail('Active product kind required');const tags=ids.length?(await w.query('SELECT t.id,t.name,t.is_active,g.code AS group_code,g.is_active AS group_active FROM tags t JOIN tag_groups g ON g.id=t.tag_group_id WHERE t.id=ANY($1::uuid[]) AND t.is_active AND g.is_active',[ids])).rows:[];if(tags.length!==ids.length)C.fail('Choose active tags and groups');try{return suggestName({brand,kindName:p.attributes.kind_name,tags});}catch(e){C.fail(e.message);}});res.json(result);}));
+ router.post('/:id/identity',route(async(req,res)=>{const id=C.uuid(req.params.id),b=req.body;if(!b||typeof b!=='object'||Array.isArray(b)||Object.keys(b).some(k=>!['product','expected_revision','assign_sku'].includes(k))||typeof b.assign_sku!=='boolean')C.fail('Use product, expected_revision and assign_sku');const {product,revision}=payload({product:b.product,expected_revision:b.expected_revision},true);if(b.assign_sku)C.text(product.name,'Name',true,255);const saved=await context(req.admin,async w=>{await identityReady(w);const p=await w.writePendingProduct(id,product,revision);return b.assign_sku?w.assignSku(id,p.revision):p;});res.json({product:saved});}));
  router.get('/:id',route(async(req,res)=>{const id=C.uuid(req.params.id),product=await context(req.admin,w=>w.detail(id));res.json({product});}));
  router.post('/',route(async(req,res)=>{const {product}=payload(req.body,false),saved=await context(req.admin,w=>w.writeProduct(null,product,null));res.status(201).json({product:saved});}));
  router.put('/:id',route(async(req,res)=>{const id=C.uuid(req.params.id),{product,revision}=payload(req.body,true),saved=await context(req.admin,w=>w.writeProduct(id,product,revision));res.json({product:saved});}));
