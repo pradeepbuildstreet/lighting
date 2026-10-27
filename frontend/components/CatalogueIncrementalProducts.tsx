@@ -1,0 +1,23 @@
+"use client";
+import {useEffect,useRef,useState,type MouseEvent} from 'react';
+import {getCatalogueClient} from '@/lib/catalogue-client';
+import {decode} from '@/lib/catalogue-core';
+import type {CatalogueList,CatalogueQuery} from '@/lib/catalogue-types';
+import {appendPage,createPageRequestGate,makeSnapshot,restoreSnapshot} from '@/lib/catalogue-incremental.mjs';
+import type {ListPosition} from '@/lib/catalogue-incremental.mjs';
+import {CatalogueProductCards} from './CatalogueProductCards';
+import styles from './CatalogueIncrementalProducts.module.css';
+const memory=new Map<string,unknown>();
+type Props={initial:CatalogueList;path:string;query:CatalogueQuery;browseCategory?:string;returnTo:string};
+export function CatalogueIncrementalProducts({initial,path,query,browseCategory,returnTo}:Props){
+ const [data,setData]=useState(initial),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const gate=useRef(createPageRequestGate()),root=useRef<HTMLDivElement>(null),latest=useRef(initial),position=useRef<ListPosition|null>(null),restored=useRef(false);
+ const storageKey='luminoza:list:v1:'+returnTo;
+ useEffect(()=>{const requests=gate.current;return()=>requests.cancel();},[]);
+ useEffect(()=>{if(restored.current)return;restored.current=true;let value=memory.get(storageKey);memory.delete(storageKey);try{const raw=sessionStorage.getItem(storageKey);sessionStorage.removeItem(storageKey);if(!value&&raw&&raw.length<=2000000)value=JSON.parse(raw);}catch(_){}try{const saved=restoreSnapshot(value,returnTo,initial);if(saved){const checked={...saved.data,products:saved.data.products.map(product=>decode.product(product))};latest.current=checked;position.current=saved.position;setData(checked);}}catch(_){}},[storageKey,returnTo,initial]);
+ useEffect(()=>{if(!position.current)return;let second=0;const first=requestAnimationFrame(()=>{second=requestAnimationFrame(()=>{const saved=position.current;if(!saved)return;const anchor=saved.id?Array.from(root.current?.querySelectorAll<HTMLElement>('[data-catalogue-id]')||[]).find(el=>el.dataset.catalogueId===saved.id):null;const top=anchor&&Number.isFinite(saved.offset)?window.scrollY+anchor.getBoundingClientRect().top-Number(saved.offset):saved.y;window.scrollTo({top:Math.max(0,top),behavior:'auto'});position.current=null;});});return()=>{cancelAnimationFrame(first);cancelAnimationFrame(second);};},[data]);
+ function remember(event:MouseEvent<HTMLDivElement>){if(event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey||!(event.target instanceof Element))return;const link=event.target.closest<HTMLAnchorElement>('a');if(!link)return;const url=new URL(link.href,window.location.href);if(url.origin!==window.location.origin||!url.pathname.startsWith('/catalogue/products/'))return;const card=link.closest<HTMLElement>('[data-catalogue-id]'),saved=makeSnapshot(returnTo,initial,latest.current,{y:window.scrollY,id:card?.dataset.catalogueId,offset:card?.getBoundingClientRect().top});memory.delete(storageKey);memory.set(storageKey,saved);while(memory.size>3)memory.delete(memory.keys().next().value!);try{sessionStorage.removeItem(storageKey);const encoded=JSON.stringify(saved);if(encoded.length<=2000000)sessionStorage.setItem(storageKey,encoded);}catch(_){} }
+ async function load(){const ticket=gate.current.begin();if(!ticket)return;const location=window.location.href;setBusy(true);setError('');try{const next=await getCatalogueClient().list({...query,page:latest.current.pagination.page+1},{signal:ticket.signal});if(!gate.current.valid(ticket)||window.location.href!==location)return;const merged=appendPage(latest.current,next);latest.current=merged;setData(merged);}catch(e){if(gate.current.valid(ticket)&&window.location.href===location)setError(e instanceof Error?e.message:'Products could not be loaded. Please retry.');}finally{if(gate.current.finish(ticket)){setBusy(false);}}}
+ const more=data.pagination.page<data.pagination.pages;
+ return <div ref={root} onClickCapture={remember} data-incremental-list={path}><CatalogueProductCards products={data.products} browseCategory={browseCategory} returnTo={returnTo}/><div className={styles.controls} aria-busy={busy}><p role="status" aria-live="polite">Loaded {data.products.length} products · {data.pagination.total} matching products</p>{error&&<p className={styles.error} role="alert">{error}</p>}{more&&<button type="button" className={styles.button} disabled={busy} onClick={()=>void load()}>{busy?<><span className={styles.spinner} aria-hidden="true"/>Loading products…</>:error?'Retry loading products':'Load more'}</button>}{!more&&<p className={styles.end}>End of results.</p>}</div></div>;
+}
