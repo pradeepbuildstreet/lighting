@@ -1,11 +1,11 @@
 -- Apply with a transactional migration runner after application compatibility is verified.
 ALTER TABLE public.product_kinds ADD COLUMN sku_prefix text;
-ALTER TABLE public.product_kinds ADD CONSTRAINT product_kinds_sku_prefix_format CHECK (sku_prefix ~ '^[A-Z]{1,8}$');
+ALTER TABLE public.product_kinds ADD CONSTRAINT product_kinds_sku_prefix_format CHECK (sku_prefix ~ '^[A-Z]{3}$');
 ALTER TABLE public.product_kinds ADD CONSTRAINT product_kinds_sku_prefix_unique UNIQUE (sku_prefix);
 UPDATE public.product_kinds SET sku_prefix=CASE code
- WHEN 'fixture' THEN 'F' WHEN 'integrated-light' THEN 'IL'
- WHEN 'replaceable-bulb' THEN 'RB' WHEN 'led-strip-module' THEN 'LSM'
- WHEN 'driver-power-supply' THEN 'DPS' WHEN 'control-accessory' THEN 'CA' END
+ WHEN 'fixture' THEN 'FIX' WHEN 'integrated-light' THEN 'INL'
+ WHEN 'replaceable-bulb' THEN 'RBL' WHEN 'led-strip-module' THEN 'LSM'
+ WHEN 'driver-power-supply' THEN 'DPS' WHEN 'control-accessory' THEN 'ACC' END
 WHERE code IN ('fixture','integrated-light','replaceable-bulb','led-strip-module','driver-power-supply','control-accessory');
 CREATE SEQUENCE public.catalogue_sku_sequence AS bigint START WITH 100001 MINVALUE 100001 MAXVALUE 999999 NO CYCLE;
 REVOKE ALL ON SEQUENCE public.catalogue_sku_sequence FROM PUBLIC;

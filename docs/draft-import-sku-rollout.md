@@ -6,7 +6,7 @@ Status: database foundation staged only. Neither migration has been applied by t
 
 Keep existing UUIDs internal. Do not add a product key or shorten UUIDs. New imported drafts may eventually have NULL SKU and name. Assign SKU only on an explicit authenticated review-form save; names remain editable and can be suggested from brand, tags and kind. Existing SKUs are preserved and become immutable when migration 07 is applied.
 
-Fixed initials: fixture F, integrated-light IL, replaceable-bulb RB, led-strip-module LSM, driver-power-supply DPS, control-accessory CA. Inactive kinds are not activated. New kinds require an explicit unused prefix before SKU allocation. One global six-digit sequence starts at 100001, producing F100001, RB100002, etc. It stops at 999999 rather than wrapping. Gaps are expected. No allocation happens during workbook parsing, preview or page opening. Existing collisions are skipped, with a bounded failure after 100 attempts.
+Exactly three uppercase initials: fixture FIX, integrated-light INL, replaceable-bulb RBL, led-strip-module LSM, driver-power-supply DPS, control-accessory ACC. Inactive kinds are not activated. New kinds require an explicit unused three-letter prefix before SKU allocation. One global six-digit sequence starts at 100001, producing FIX100001, RBL100002, etc. It stops at 999999 rather than wrapping. Gaps are expected. No allocation happens during workbook parsing, preview or page opening. Existing collisions are skipped, with a bounded failure after 100 attempts.
 
 ## Deployment order
 

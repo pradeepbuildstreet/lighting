@@ -10,7 +10,7 @@ BEGIN
  VALUES(NULL,NULL,'fixture',false,false) RETURNING * INTO second_product;
  IF first_product.id=second_product.id THEN RAISE EXCEPTION 'Draft UUIDs must differ'; END IF;
  SELECT * INTO assigned FROM public.assign_catalogue_product_sku(first_product.id,first_product.revision);
- IF assigned.sku !~ '^F[1-9][0-9]{5}$' OR substring(assigned.sku FROM 2)::bigint<100001 THEN
+ IF assigned.sku !~ '^FIX[1-9][0-9]{5}$' OR substring(assigned.sku FROM 4)::bigint<100001 THEN
   RAISE EXCEPTION 'Unexpected assigned SKU: %',assigned.sku;
  END IF;
  IF assigned.id<>first_product.id OR assigned.published THEN RAISE EXCEPTION 'Assignment must preserve UUID and remain unpublished'; END IF;
@@ -31,7 +31,7 @@ BEGIN
  UPDATE public.products SET name='Edited display name' WHERE id=first_product.id;
  IF (SELECT sku FROM public.products WHERE id=first_product.id)<>assigned.sku THEN RAISE EXCEPTION 'Name edit changed SKU'; END IF;
  BEGIN
-  UPDATE public.product_kinds SET sku_prefix='CHANGED' WHERE code='fixture';
+  UPDATE public.product_kinds SET sku_prefix='BAD' WHERE code='fixture';
   RAISE EXCEPTION 'Expected fixed initials rejection';
  EXCEPTION WHEN check_violation THEN NULL; END;
 END;
