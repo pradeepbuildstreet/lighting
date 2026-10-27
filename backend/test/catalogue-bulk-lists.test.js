@@ -1,0 +1,15 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const L=require('../services/catalogue-bulk-lists');
+test('blank list is optional',()=>{for(const v of ['',null,undefined,' '])assert.deepEqual(L.splitList(v),[]);});
+test('comma lists trim whitespace',()=>assert.deepEqual(L.splitList('metal, glass'),['metal','glass']));
+test('quoted entries support commas and escaped quotes',()=>assert.deepEqual(L.splitList('"front, brass.jpg", "a""b.jpg"'),['front, brass.jpg','a"b.jpg']));
+test('malformed entries are rejected',()=>{for(const s of ['a,,b','a,',',a','"a','a"b','"a"b','""'])assert.throws(()=>L.splitList(s));});
+test('limits apply to entries and plain cell types',()=>{assert.throws(()=>L.splitList('a,b',1));assert.throws(()=>L.splitList({formula:'1+1'}));});
+test('joined lists roundtrip',()=>{const values=['one','front, brass.jpg','a"b'];assert.deepEqual(L.splitList(L.joinList(values)),values);});
+test('Windows relative paths normalize',()=>assert.equal(L.relativeImagePath('pendants\\PD001\\front.jpg'),'pendants/PD001/front.jpg'));
+test('absolute paths require an explicitly matched root',()=>{assert.equal(L.relativeImagePath('D:\\Images\\pendants\\a.jpg','D:\\Images'),'pendants/a.jpg');assert.throws(()=>L.relativeImagePath('D:\\Other\\a.jpg','D:\\Images'));assert.throws(()=>L.relativeImagePath('D:\\Images\\a.jpg'));});
+test('path traversal and malformed paths rejected',()=>{for(const p of ['../a.jpg','a/../b.jpg','a//b.jpg','./a.jpg','https://example.com/a.jpg','a\u0000.jpg'])assert.throws(()=>L.relativeImagePath(p));});
+test('duplicate list values can be collapsed explicitly',()=>assert.deepEqual(L.uniqueEntries(['a','a','b']),['a','b']));
+test('update revision must be a safe positive bigint string',()=>{assert.equal(L.checkRevision('9007199254740993'),'9007199254740993');for(const r of ['',0,-1,'1.1','abc','9223372036854775808'])assert.throws(()=>L.checkRevision(r));});
+test('unsafe numeric revisions rejected',()=>assert.throws(()=>L.checkRevision(9007199254740992)));
