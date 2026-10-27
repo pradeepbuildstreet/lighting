@@ -1,0 +1,1 @@
+.pending{display:inline-flex;align-items:center;gap:6px;white-space:nowrap;color:#555b60;font:12px/1.4 Arial,sans-serif}.ring{width:14px;height:14px;border:2px solid #cbd4ca;border-top-color:#18382e;border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}@media(prefers-reduced-motion:reduce){.ring{animation:none;border-style:dotted}}

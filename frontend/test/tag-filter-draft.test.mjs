@@ -1,0 +1,14 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {groupDraft,applyGroupDraft} from '../lib/tag-filter-draft.mjs';
+import {encodeTagSelections,parseTagSelections,toggleTagChoice} from '../lib/catalogue-tag-filter-model.mjs';
+const a='11111111-1111-1111-1111-111111111111',b='22222222-2222-2222-2222-222222222222',x='aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',y='bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
+const encode=rows=>encodeTagSelections(rows),row=(group_id,tag_ids)=>({group_id,tag_ids,unclassified:false});
+test('opening a group creates an isolated draft',()=>{const applied=encode([row(a,[x]),row(b,[y])]);assert.deepEqual(parseTagSelections(groupDraft(applied,a)),[row(a,[x])]);});
+test('toggling a local choice does not mutate applied selections',()=>{const applied=encode([row(a,[x]),row(b,[y])]),draft=encode(toggleTagChoice(parseTagSelections(groupDraft(applied,a)),a,y));assert.deepEqual(parseTagSelections(applied),[row(a,[x]),row(b,[y])]);assert.deepEqual(parseTagSelections(draft),[row(a,[x,y])]);});
+test('Apply replaces only the chosen group',()=>{const applied=encode([row(a,[x]),row(b,[y])]);assert.deepEqual(parseTagSelections(applyGroupDraft(applied,a,encode([row(a,[y])]))),[row(a,[y]),row(b,[y])]);});
+test('Clear is local until Apply and preserves other groups on Apply',()=>{const applied=encode([row(a,[x]),row(b,[y])]),draft='';assert.equal(parseTagSelections(applied).length,2);assert.deepEqual(parseTagSelections(applyGroupDraft(applied,a,draft)),[row(b,[y])]);});
+test('discarding a draft restores applied checkmarks on reopen',()=>{const applied=encode([row(a,[x])]);let draft=groupDraft(applied,a);draft='';assert.equal(draft,'');assert.equal(groupDraft(applied,a),applied);});
+test('cross-group draft injection is rejected',()=>assert.throws(()=>applyGroupDraft('',a,encode([row(b,[x])]))));
+test('selection request keys use applied values, never the local draft',()=>{const source=readFileSync(new URL('../components/CatalogueInlineFeatures.tsx',import.meta.url),'utf8'),parent=readFileSync(new URL('../components/CatalogueFilters.tsx',import.meta.url),'utf8');assert.ok(source.includes('tagFacetParams(buildListQuery(query),value,group.id'));assert.ok(source.includes('setDraft(encodeTagSelections(make()))'));assert.ok(!source.includes('setData(null)'));assert.ok(parent.includes("query={query} value={query.tag_filters||''} onApply={applyTags}"));assert.ok(source.includes('disabled={pending} onClick={apply}'));});

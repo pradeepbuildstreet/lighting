@@ -1,0 +1,1 @@
+export function createFacetCache<T>(loader:(params:URLSearchParams,options?:{signal?:AbortSignal})=>Promise<T>,config?:{ttl?:number;maxEntries?:number;now?:()=>number}):(params:URLSearchParams,options?:{signal?:AbortSignal;bypass?:boolean})=>Promise<T>;
