@@ -1,0 +1,16 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict'),S=require('../services/catalogue-import-job-core');
+const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aC3sAAAAASUVORK5CYII=','base64');
+const image={path:'a.png',sha256:S.hash(png),size:png.length},rows=[{image_paths:['a.png']}];
+test('manifest binds every referenced path to size and digest',()=>assert.deepEqual(S.manifestFor(rows,[image]),[image]));
+test('missing, duplicate and foreign paths rejected',()=>{assert.throws(()=>S.manifestFor(rows,[]));assert.throws(()=>S.manifestFor(rows,[image,image]));assert.throws(()=>S.manifestFor(rows,[{...image,path:'b.png'}]));});
+test('oversized image and batch quotas rejected',()=>{assert.throws(()=>S.manifestFor(rows,[{...image,size:S.MAX_FILE+1}]));const files=Array.from({length:11},(_,i)=>({...image,path:i+'.png',size:S.MAX_FILE}));assert.throws(()=>S.manifestFor([{image_paths:files.map(f=>f.path)}],files),/250/);});
+test('manifest ordering is canonical',()=>{const b={...image,path:'b.png'};assert.deepEqual(S.manifestFor([{image_paths:['b.png','a.png']}],[b,image]),[image,b]);});
+test('storage keys are deterministic and job/path scoped',()=>{const key=S.storageStem('job',image);assert.match(key,/^[a-f0-9-]{36}$/);assert.equal(S.storageStem('job',image),key);assert.notEqual(S.storageStem('other',image),key);assert.notEqual(S.storageStem('job',{...image,path:'b.png'}),key);});
+test('PNG signature and hash validation',()=>assert.equal(S.verifyFile(png,image).mime,'image/png'));
+test('spoofed type, truncation and digest changes rejected',()=>{assert.throws(()=>S.inspectImage(Buffer.from('<script>bad</script>')));assert.throws(()=>S.inspectImage(png.subarray(0,33)));assert.throws(()=>S.verifyFile(png,{...image,sha256:'0'.repeat(64)}),e=>e.status===409);});
+test('oversized PNG dimensions rejected',()=>{const b=Buffer.from(png);b.writeUInt32BE(100000,16);b.writeUInt32BE(100000,20);assert.throws(()=>S.inspectImage(b));});
+test('owner isolation precedes token use',()=>assert.throws(()=>S.authorize({created_by:'a'},'b'),e=>e.status===404));
+test('wrong token rejected',()=>assert.throws(()=>S.authorize({created_by:'a',preview_token:'1'.repeat(64)},'a','2'.repeat(64)),e=>e.status===409));
+test('expired previews cannot write',()=>assert.throws(()=>S.authorize({created_by:'a',status:'preview',expired:true},'a',undefined,true),e=>e.status===409));
+test('committed jobs remain readable after expiry but cannot stage',()=>{const job={created_by:'a',status:'committed',expired:true,preview_token:'1'.repeat(64)};assert.equal(S.authorize(job,'a'),job);assert.throws(()=>S.authorize(job,'a',undefined,true));});
