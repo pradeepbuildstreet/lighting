@@ -1,0 +1,16 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict'),N=require('../services/catalogue-identity-rules'),R=require('../services/catalogue-rulebook-core');
+const tags=[{group_code:'style',name:'Modern'},{group_code:'style',name:'Contemporary'},{group_code:'material',name:'Brass'},{group_code:'material',name:'Acrylic'}],rule=R.validateRule({groups:['style','material'],maxPerGroup:2,separator:' & ',maxLength:255,includeBrand:true});
+test('subcategory is between materials and product kind',()=>assert.equal(N.suggestName({brand:'Acme',categoryName:'Chandelier',kindName:'Fixtures',tags},rule).name,'Acme Contemporary & Modern Acrylic & Brass Chandelier Fixtures'));
+test('missing brand never creates leading whitespace',()=>{for(const brand of [undefined,null,'','   ']){const name=N.suggestName({brand,categoryName:'Chandelier',kindName:'Fixtures',tags},rule).name;assert.equal(name,'Contemporary & Modern Acrylic & Brass Chandelier Fixtures');assert.equal(name,name.trim());}});
+test('all unavailable fields produce no invented placeholders',()=>assert.equal(N.suggestName({tags:[]},rule).name,''));
+test('category-only partial preview contains only that label',()=>assert.equal(N.suggestName({categoryName:'Chandelier'},rule).name,'Chandelier'));
+test('kind-only input does not invent a category or brand',()=>assert.equal(N.suggestName({kindName:'Fixtures'},rule).name,'Fixtures'));
+test('missing groups leave no dangling separators',()=>assert.equal(N.suggestName({categoryName:'Chandelier',kindName:'Fixtures',tags:[]},rule).name,'Chandelier Fixtures'));
+test('explicit category omission remains configurable',()=>assert.equal(N.suggestName({categoryName:'Chandelier',kindName:'Fixtures'},R.validateRule({...rule,includePrimaryCategory:false})).name,'Fixtures'));
+test('brand omission respects its flag',()=>assert.equal(N.suggestName({brand:'Acme',kindName:'Fixtures'},R.validateRule({...rule,includeBrand:false})).name,'Fixtures'));
+test('inactive or blank tag labels are omitted',()=>assert.equal(N.suggestName({kindName:'Fixtures',tags:[{group_code:'style',name:' ',is_active:true},{group_code:'style',name:'Modern',is_active:false}]},rule).name,'Fixtures'));
+test('internal whitespace is normalized',()=>assert.equal(N.suggestName({brand:'  Acme   Co ',categoryName:'  Ceiling   Lights ',kindName:' Fixtures '},rule).name,'Acme Co Ceiling Lights Fixtures'));
+test('length limits still fail rather than silently truncating',()=>assert.throws(()=>N.suggestName({brand:'x'.repeat(255),kindName:'Fixtures'},rule),/exceeds/));
+test('source input is not changed',()=>{const input={brand:null,categoryName:'Chandelier',kindName:'Fixtures',tags};N.suggestName(input,rule);assert.equal(input.brand,null);assert.equal(tags[0].name,'Modern');});
+test('old JSON gets the new default and invalid category flag is rejected',()=>{assert.equal(rule.includePrimaryCategory,true);assert.throws(()=>R.validateRule({...rule,includePrimaryCategory:'yes'}));});
