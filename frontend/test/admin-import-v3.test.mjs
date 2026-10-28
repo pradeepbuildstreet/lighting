@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {webcrypto} from 'node:crypto';import {indexFiles,digest,buildManifest,validateJob,readReceipt,isStaged} from '../lib/admin-import-v3.mjs';
+const id='11111111-1111-4111-8111-111111111111',file={name:'a.png',webkitRelativePath:'Images/sub/a.png',size:3,arrayBuffer:async()=>Uint8Array.of(1,2,3).buffer};
+test('folder root is stripped but nested paths retained',()=>assert.equal(indexFiles([file]).files.get('sub/a.png'),file));
+test('duplicate paths detected',()=>assert.equal(indexFiles([file,file]).duplicates.has('sub/a.png'),true));
+test('manifest hashes only referenced files',async()=>{const manifest=await buildManifest([{image_paths:['sub/a.png']}],[file,{...file,name:'unused',webkitRelativePath:'Images/unused'}],webcrypto.subtle);assert.equal(manifest.length,1);assert.equal(manifest[0].sha256,await digest(await file.arrayBuffer(),webcrypto.subtle));});
+test('missing and oversized files rejected before staging',async()=>{await assert.rejects(buildManifest([{image_paths:['missing']}],[file],webcrypto.subtle));await assert.rejects(buildManifest([{image_paths:['sub/a.png']}],[{...file,size:26*1024*1024}],webcrypto.subtle));});
+test('no-image drafts have an empty manifest',async()=>assert.deepEqual(await buildManifest([{image_paths:[]}],[],webcrypto.subtle),[]));
+test('malformed job responses fail closed',()=>assert.throws(()=>validateJob({job:{status:'committed'}})));
+test('receipt validation preserves exact recovery context',()=>{const r={owner_id:id,request_key:id,input_hash:'a'.repeat(64),job_id:id};assert.deepEqual(readReceipt(JSON.stringify(r)),r);assert.equal(readReceipt('{'),null);assert.equal(readReceipt({...r,input_hash:'bad'}),null);});
+test('staging progress requires path, hash and size match',()=>{const f={path:'a',sha256:'a'.repeat(64),size:3},job={files:[{relative_path:'a',sha256:f.sha256,file_size_bytes:'3'}]};assert.equal(isStaged(job,f),true);assert.equal(isStaged(job,{...f,size:4}),false);});
