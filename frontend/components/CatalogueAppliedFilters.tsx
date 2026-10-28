@@ -9,6 +9,7 @@ import {loadTagFacets,tagFacetParams} from '@/lib/catalogue-tag-facets.mjs';
 import type {TagFacets} from '@/lib/catalogue-tag-facets.mjs';
 import type {CatalogueQuery} from '@/lib/catalogue-types';
 import styles from './CatalogueSelections.module.css';
+import layout from './StorefrontSkeleton.module.css';
 type Props={path:string;query:CatalogueQuery;fixedCategory?:string;categoryName?:string;summary:string};
 export function CatalogueAppliedFilters({path,query,fixedCategory='',categoryName,summary}:Props){
  const base=buildListQuery(query).toString();
@@ -33,12 +34,11 @@ export function CatalogueAppliedFilters({path,query,fixedCategory='',categoryNam
  const hasProductFilters=!!(query.kind||query.brand||query.currency||query.min_price||query.max_price);
  const hasFeatures=selected.length>0;
  const hasSelections=!!search||chips.length>0||hasFeatures;
- const hasNondefaultSort=!!query.sort&&query.sort!=='name';
- const showClear=hasSelections||hasNondefaultSort;
  const productPatch={kind:'',brand:'',currency:'',min_price:'',max_price:''};
  function closeMenu(event:React.MouseEvent<HTMLAnchorElement>){const menu=event.currentTarget.closest('details');if(menu)menu.open=false;}
- return <section className={styles.root} aria-label="Results and active selections">
-  {showClear&&<div className={styles.row}>
+ if(!hasSelections)return null;
+ return <div className={layout.selections} data-storefront-segment="5"><section className={styles.root} aria-label="Results and active selections">
+  <div className={styles.row}>
    <div className={styles.chips} role="region" aria-label="Active selections; scroll horizontally for more" tabIndex={0}>
     {!!search&&<Link scroll={false} className={styles.chip} href={changed({q:''})} aria-label={'Remove search: '+search}>Search: {search}<span aria-hidden="true">×</span></Link>}
     {chips.map(c=><Link scroll={false} key={c.key} className={styles.chip} href={href(c.key)} aria-label={'Remove '+c.label}>{c.label}<span aria-hidden="true">×</span></Link>)}
@@ -61,8 +61,8 @@ export function CatalogueAppliedFilters({path,query,fixedCategory='',categoryNam
      </div>
     </details>
    </div>
-  </div>}
+  </div>
   {labelError&&<p className={styles.notice} role="status">Some selection names could not be loaded. Selections remain removable. <button type="button" onClick={()=>setRetry(n=>n+1)}>Retry names</button></p>}
   <p className={styles.summary} aria-live="polite">{summary}</p>
- </section>;
+ </section></div>;
 }
