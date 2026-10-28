@@ -1,8 +1,8 @@
 "use strict";
-const RULE_VERSION=3;
+const RULE_VERSION=4;
 const DEFAULT_RULE=Object.freeze({groups:Object.freeze(['style','finish','material']),maxPerGroup:2,separator:' & ',maxLength:255,includeBrand:true,includePrimaryCategory:true});
-function clean(v){return typeof v==='string'?v.trim().replace(/\s+/g,' '):'';}
-const KIND_LABELS=Object.freeze({fixture:'Fixture','integrated-light':'Integrated Light','replaceable-bulb':'Bulb/Lamp'});
+const clean=v=>typeof v==='string'?v.trim().replace(/\s+/g,' '):'';
+const KIND_LABELS=Object.freeze({fixture:'Fixture','integrated-light':'Integrated Light','replaceable-bulb':'Replaceable Bulb/Lamp'});
 function singularKindLabel(kind){if(typeof kind==='string')return KIND_LABELS[kind]||clean(kind);const code=kind?.code,label=clean(kind?.name);return KIND_LABELS[code]||label;}
 function suggestName({brand,categoryName,kindName,kindCode,tags=[]},rule=DEFAULT_RULE){
  const parts=[],brandLabel=clean(brand),categoryLabel=clean(categoryName),kindLabel=singularKindLabel(kindCode?{code:kindCode,name:kindName}:kindName);
