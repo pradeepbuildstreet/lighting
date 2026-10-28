@@ -1,0 +1,10 @@
+import test from 'node:test';import assert from 'node:assert/strict';import {selectTag,tagSelectionErrors} from '../lib/admin-tag-selection.mjs';
+const group={id:'g',name:'Finish',code:'finish',is_active:true,selection_mode:'single'},a={id:'a',tag_group_id:'g',is_active:true},b={id:'b',tag_group_id:'g',is_active:true},other={id:'o',tag_group_id:'other',is_active:true};
+test('single selection replaces its group only',()=>assert.deepEqual(selectTag([a,other],b,group).map(t=>t.id),['o','b']));
+test('multi selection supports addition and removal',()=>{const g={...group,selection_mode:'multi'},next=selectTag([a],b,g);assert.equal(next.length,2);assert.deepEqual(selectTag(next,b,g,false).map(t=>t.id),['a']);});
+test('choosing an existing tag never duplicates it',()=>assert.equal(selectTag([a],a,{...group,selection_mode:'multi'}).length,1));
+test('wrong-group and inactive additions are rejected',()=>{assert.throws(()=>selectTag([],other,group));assert.throws(()=>selectTag([],{...a,is_active:false},group));});
+test('inactive assignments can be removed',()=>assert.deepEqual(selectTag([a],{...a,is_active:false},{...group,is_active:false},false),[]));
+test('single replacement remains possible at the tag limit',()=>{const tags=[a,...Array.from({length:199},(_,i)=>({id:'x'+i,tag_group_id:'other'}))];assert.equal(selectTag(tags,b,group).length,200);assert.throws(()=>selectTag(tags,b,{...group,selection_mode:'multi'}));});
+test('known single-policy errors are reported and current metadata wins',()=>{assert.equal(tagSelectionErrors([a,b],[group]).length,1);assert.deepEqual(tagSelectionErrors([{...a,selection_mode:'single'},b],[{...group,selection_mode:'multi'}]),[]);});
+test('selection leaves original arrays and records unchanged',()=>{const current=[a];selectTag(current,b,group);assert.deepEqual(current,[a]);assert.equal(a.group_name,undefined);});
