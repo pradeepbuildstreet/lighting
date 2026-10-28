@@ -1,0 +1,11 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict'),{chooseCategoryRule:choose}=require('../services/catalogue-category-name-rule');
+const category={id:'child',allow_direct_products:true},globalRule={rule:{groups:['style']},revision:2},override={category_id:'child',enabled:true,rule:{groups:['finish']},revision:3},builtIn={groups:[]};
+test('primary category override wins',()=>{const r=choose(category,override,globalRule,builtIn);assert.equal(r.rule,override.rule);assert.equal(r.rule_scope,'category');assert.equal(r.settings_revision,'3');});
+test('category with no rule falls back to global',()=>assert.equal(choose(category,null,globalRule,builtIn).rule,globalRule.rule));
+test('disabled category override falls back to global',()=>assert.equal(choose(category,{...override,enabled:false},globalRule,builtIn).rule,globalRule.rule));
+test('draft with no primary uses global',()=>assert.equal(choose(null,null,globalRule,builtIn).rule_scope,'default'));
+test('missing global uses built-in default',()=>assert.equal(choose(null,null,null,builtIn).rule,builtIn));
+test('group-only categories cannot supply rules',()=>assert.throws(()=>choose({...category,allow_direct_products:false},override,globalRule,builtIn)));
+test('a different category rule is never inherited implicitly',()=>assert.throws(()=>choose(category,{...override,category_id:'parent'},globalRule,builtIn)));
+test('selection does not mutate stored records',()=>{choose(category,override,globalRule,builtIn);assert.equal(override.enabled,true);assert.deepEqual(globalRule.rule,{groups:['style']});});

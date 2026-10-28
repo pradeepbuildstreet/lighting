@@ -1,0 +1,9 @@
+# Category naming rollout
+
+Phase 1: category/default configuration and server resolution. No migration is applied. Saved direct-product categories/subcategories expose Configure product naming rule and Global default naming rule links inside their edit form. The nested Reference Data Categories screen supports custom override, global-default choice, example preview, optimistic revision saves and unsaved-change guards. Group-only/unsaved categories cannot configure overrides. Inactive direct-product categories may be configured for future use; actual product naming requires an active direct-product primary category with active ancestry.
+
+Naming resolution is primary category override when enabled, otherwise global default, otherwise built-in default. No inheritance from other categories, parent rules or legacy product-kind rules. Legacy kind rules are retained but no longer selected or editable through the old kind-scoped PUT route. Existing names, SKUs and product IDs are never modified by configuration changes.
+
+The suggestion API now accepts optional primary_category_id. If supplied (including null) it uses that preview category; otherwise it uses the saved primary category for existing clients. Phase 2 is still REQUIRED: CatalogueManager must send the unsaved primary_category_id, include it in nameSourceKey, and label category/default rule results correctly. ProductIdentityGate copy must also stop referring to product-kind naming overrides. Do not apply migration 10 until this client wiring is committed and integration-tested.
+
+Eight pure resolver tests passed locally. New endpoints, category links/editor TSX, example preview, optimistic conflict paths, category-eligibility changes, full TypeScript checking, production build and database/browser integration have not been verified. The global default needs migration 09; category overrides additionally need migration 10. Activation remains a separately approved operation.

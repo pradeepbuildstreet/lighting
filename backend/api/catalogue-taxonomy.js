@@ -2,8 +2,10 @@
 const {createTaxonomyService}=require('../services/catalogue-taxonomy');
 function createTaxonomyRouter(express,db,audit){const router=express.Router(),service=createTaxonomyService(db,audit);
  router.use((req,res,next)=>{res.set('Cache-Control','private, no-store');if(!req.admin?.id)return res.status(401).json({error:'Admin sign-in required'});return next();});
- const rules=require('./catalogue-rulebook');
- router.post('/products-v2/:id/name-suggestion',rules.createNameSuggestionHandler({db,audit}));
+ const categoryNames=require('./catalogue-category-naming'),rules=require('./catalogue-rulebook');
+ router.post('/products-v2/:id/name-suggestion',categoryNames.createCategoryNameSuggestionHandler({db,audit}));
+ router.use('/rulebook/category-naming',categoryNames.createCategoryNamingRouter({express,db,audit}));
+ router.put('/rulebook/naming/:scope',(req,res,next)=>req.params.scope==='default'?next():res.status(410).json({error:'Product-kind naming overrides are retired. Configure naming under Categories. Existing rules have not been deleted.'}));
  router.use('/rulebook',rules.createRulebookRouter({express,db,audit}));
  router.use('/products-v2',require('./catalogue-tag-products').createTagProductRouter({express,db,audit}));
  router.use('/imports-v2',require('./catalogue-tag-imports').createTagImportRouter({express,multer:require('multer'),db,audit}));
