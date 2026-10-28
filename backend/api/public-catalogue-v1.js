@@ -10,6 +10,7 @@ function createRouter(express,db,rateLimit){
  router.use((req,res,next)=>{res.set({'Cache-Control':'no-store','X-Robots-Tag':'noindex, nofollow','X-Content-Type-Options':'nosniff'});if(!enabled(process.env))return res.status(404).json({error:'Not found'});if(!['GET','HEAD'].includes(req.method))return res.status(405).set('Allow','GET, HEAD').json({error:'Method not allowed'});next();});
  router.use(rateLimit({windowMs:60000,limit:120,standardHeaders:'draft-7',legacyHeaders:false,message:{error:'Too many requests'}}));
  const wrap=fn=>async(req,res)=>{try{await service.ready();await fn(req,res);}catch(e){const status=[400,404,416].includes(e.status)?e.status:503;console.error(JSON.stringify({event:'public_catalogue_request_failed',code:e.code||String(status)}));if(!res.headersSent)res.status(status).json({error:status===503?'Catalogue temporarily unavailable':status===404?'Not found':status===416?'Invalid media range':e.message});}};
+ router.get('/category-images/:id/:revision',wrap(async(req,res)=>homeCategories.image(req.params.id,req.params.revision,res)));
  router.get('/home-categories',wrap(async(_req,res)=>res.json(await homeCategories.tiles())));
  router.get('/categories',wrap(async(_req,res)=>res.json(await service.categories())));
  router.get('/filters',wrap(async(_req,res)=>res.json(await service.filters())));
