@@ -89,3 +89,20 @@ jobs:
             frontend/build.log
           if-no-files-found: warn
           retention-days: 7
+  integrated:
+    name: Catalogue integrated verification
+    needs: [backend, frontend]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require backend and frontend verification to succeed
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+        run: |
+          printf 'Backend verification: %s\nFrontend verification: %s\n' "$BACKEND_RESULT" "$FRONTEND_RESULT"
+          if [[ "$BACKEND_RESULT" != "success" || "$FRONTEND_RESULT" != "success" ]]; then
+            echo "Integrated catalogue verification failed or was incomplete. Inspect the retained job logs."
+            exit 1
+          fi
