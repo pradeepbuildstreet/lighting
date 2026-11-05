@@ -35,7 +35,7 @@ function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}
    await c.query("SET LOCAL lock_timeout='3s'");await c.query("SET LOCAL statement_timeout='15s'");
    await c.query('SELECT pg_advisory_xact_lock(8102401)');await c.query('SELECT pg_advisory_xact_lock(8102403)');
    if((await c.query("SELECT enabled AND COALESCE((to_jsonb(c)->>'auto_approve_clean_audits')::boolean,false) AS enabled FROM public.catalogue_pipeline_configuration c WHERE singleton FOR SHARE")).rows[0]?.enabled!==true)return [];
-   const rows=(await c.query(`SELECT j.*,p.revision AS live_revision,p.review_status AS live_review_status,
+   const rows=(await c.query(`SELECT j.*,j.updated_at::text AS recovery_updated_at,p.revision AS live_revision,p.review_status AS live_review_status,
     p.duplicate_of_product_id AS live_duplicate_of_product_id,p.sku AS live_sku,p.name AS live_name,
     to_jsonb(u)->>'role' AS actor_role,to_jsonb(u)->>'is_active' AS actor_active,
     a.id AS latest_audit_id,a.status AS audit_status,a.algorithm_version,a.product_revision AS audited_revision,
@@ -57,12 +57,12 @@ function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}
     ORDER BY a.completed_at,j.product_id LIMIT 5 FOR UPDATE OF j SKIP LOCKED`,[FRESHNESS_ERROR])).rows;
    const saved=[];
    for(const row of rows){
-    if(!canResumeFreshAudit(row))continue;
+    if(!canResumeFreshAudit(row)||typeof row.recovery_updated_at!=='string'||!row.recovery_updated_at)continue;
     const next=(await c.query(`UPDATE public.catalogue_duplicate_jobs SET status='pending',generation=generation+1,attempts=0,
      run_after=clock_timestamp(),lease_until=NULL,lease_token=NULL,last_error=NULL,audit_id=$4,updated_at=clock_timestamp()
-     WHERE product_id=$1 AND generation=$2 AND updated_at=$3 AND status='held'
-     RETURNING product_id,generation,audit_id`,[row.product_id,row.generation,row.updated_at,row.latest_audit_id])).rows[0];
-    if(next)saved.push(next);
+     WHERE product_id=$1 AND generation=$2 AND updated_at=$3::timestamptz AND status='held'
+     RETURNING product_id,generation,audit_id`,[row.product_id,row.generation,row.recovery_updated_at,row.latest_audit_id])).rows[0];
+    if(next)saved.push(next);else log({event:'duplicate_recovery_compare_conflict',product_id:row.product_id,generation:row.generation});
    }
    return saved;
   });
