@@ -1,4 +1,5 @@
 "use strict";
+const {FRESHNESS_ERROR,canResumeFreshAudit}=require('./catalogue-audit-recovery-policy');
 function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}={}){
  let stopped=false,running=null,timer=null;
  const scoped={...db,transaction:fn=>db.transaction(async c=>{await c.query("SET LOCAL lock_timeout='3s'");await c.query("SET LOCAL statement_timeout='30s'");return fn(c);})};
@@ -29,12 +30,51 @@ function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}
   await finish(job,'completed',null,auditId);
   log({event:'duplicate_clean_audit_approved',product_id:job.product_id,audit_id:auditId});
  }
+ async function resumeFreshHeldAudits(){
+  const recovered=await db.transaction(async c=>{
+   await c.query("SET LOCAL lock_timeout='3s'");await c.query("SET LOCAL statement_timeout='15s'");
+   await c.query('SELECT pg_advisory_xact_lock(8102401)');await c.query('SELECT pg_advisory_xact_lock(8102403)');
+   if((await c.query("SELECT enabled AND COALESCE((to_jsonb(c)->>'auto_approve_clean_audits')::boolean,false) AS enabled FROM public.catalogue_pipeline_configuration c WHERE singleton FOR SHARE")).rows[0]?.enabled!==true)return [];
+   const rows=(await c.query(`SELECT j.*,p.revision AS live_revision,p.review_status AS live_review_status,
+    p.duplicate_of_product_id AS live_duplicate_of_product_id,p.sku AS live_sku,p.name AS live_name,
+    to_jsonb(u)->>'role' AS actor_role,to_jsonb(u)->>'is_active' AS actor_active,
+    a.id AS latest_audit_id,a.status AS audit_status,a.algorithm_version,a.product_revision AS audited_revision,
+    a.completed_at AS audit_completed_at,a.scanned_count,a.corpus_digest IS NOT NULL AS has_corpus_digest,
+    (SELECT count(*)::int FROM public.products) AS catalogue_count,
+    (SELECT count(*)::int FROM public.product_duplicate_candidates x WHERE x.audit_id=a.id) AS candidate_count,
+    EXISTS(SELECT 1 FROM public.product_duplicate_reviews x WHERE x.audit_id=a.id) AS has_review
+    FROM public.catalogue_duplicate_jobs j JOIN public.products p ON p.id=j.product_id
+    JOIN public.app_users u ON u.id=j.actor_id
+    JOIN LATERAL(SELECT * FROM public.product_duplicate_audits d WHERE d.product_id=p.id ORDER BY d.created_at DESC,d.id DESC LIMIT 1)a ON true
+    WHERE j.status='held' AND j.last_error=$1 AND (j.lease_until IS NULL OR j.lease_until<now())
+    AND p.review_status='pending_review' AND p.duplicate_of_product_id IS NULL
+    AND p.sku IS NOT NULL AND length(btrim(coalesce(p.name,'')))>0 AND j.product_revision=p.revision
+    AND to_jsonb(u)->>'role'='admin' AND to_jsonb(u)->>'is_active'='true'
+    AND a.status='completed' AND a.product_revision=p.revision AND a.algorithm_version='tags-evidence-v2'
+    AND a.corpus_digest IS NOT NULL AND a.completed_at>j.updated_at
+    AND a.scanned_count=(SELECT count(*)-1 FROM public.products) AND (SELECT count(*) FROM public.products)<=1000
+    AND NOT EXISTS(SELECT 1 FROM public.product_duplicate_reviews x WHERE x.audit_id=a.id)
+    ORDER BY a.completed_at,j.product_id LIMIT 5 FOR UPDATE OF j SKIP LOCKED`,[FRESHNESS_ERROR])).rows;
+   const saved=[];
+   for(const row of rows){
+    if(!canResumeFreshAudit(row))continue;
+    const next=(await c.query(`UPDATE public.catalogue_duplicate_jobs SET status='pending',generation=generation+1,attempts=0,
+     run_after=clock_timestamp(),lease_until=NULL,lease_token=NULL,last_error=NULL,audit_id=$4,updated_at=clock_timestamp()
+     WHERE product_id=$1 AND generation=$2 AND updated_at=$3 AND status='held'
+     RETURNING product_id,generation,audit_id`,[row.product_id,row.generation,row.updated_at,row.latest_audit_id])).rows[0];
+    if(next)saved.push(next);
+   }
+   return saved;
+  });
+  for(const row of recovered)log({event:'duplicate_job_resumed_after_fresh_audit',...row});
+ }
  async function cycle(){
   if(stopped)return;
   const installed=(await db.query("SELECT to_regclass('public.catalogue_pipeline_configuration') IS NOT NULL AND to_regclass('public.catalogue_duplicate_jobs') IS NOT NULL AS ready")).rows[0]?.ready===true;
   if(!installed)return;
   const configuration=(await db.query("SELECT enabled,COALESCE((to_jsonb(c)->>'auto_approve_clean_audits')::boolean,false) AS auto_approve_clean_audits FROM public.catalogue_pipeline_configuration c WHERE singleton")).rows[0];
   if(configuration?.enabled!==true)return;
+  if(configuration.auto_approve_clean_audits===true)await resumeFreshHeldAudits();
   await db.query("UPDATE public.catalogue_duplicate_jobs SET status='failed',last_error='Lease expired after maximum attempts; administrator recheck required',lease_until=NULL,lease_token=NULL,updated_at=now() WHERE status='processing' AND lease_until<now() AND attempts>=5");
   const job=await db.transaction(async c=>(await c.query(`WITH due AS (
    SELECT product_id FROM public.catalogue_duplicate_jobs
