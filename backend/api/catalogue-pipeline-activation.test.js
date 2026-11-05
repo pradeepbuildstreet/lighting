@@ -1,0 +1,22 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const exported={exports:{}};
+vm.runInNewContext(fs.readFileSync(require.resolve('./catalogue-pipeline'),'utf8'),{module:exported,require:id=>id==='../validators/catalogue'?{uuid:id=>id}:require(id)});
+const {filters,createPipelineRouter}=exported.exports;
+test('default pipeline view does not exclude inactive products',()=>{const f=filters();assert.equal(f.active,'');assert.equal(f.check,'');assert.equal(f.release,'');});
+test('ready and blocked activation views are accepted',()=>{for(const release of ['activation_ready','inactive_blocked'])assert.equal(filters({release,active:'false'}).release,release);});
+test('invalid filters remain rejected',()=>{for(const value of [{release:'force_activate'},{active:'inactive'},{check:'unknown'},{page:-1},{page:100001}]){assert.throws(()=>filters(value));}});
+async function listing(query){
+ const routes={},calls=[];
+ const db={transaction:async fn=>fn({query:async(sql,args)=>{calls.push({sql,args});if(sql.startsWith('SET TRANSACTION'))return {rows:[]};if(sql.includes('to_regclass'))return {rows:[{ready:true}]};if(sql.startsWith('SELECT enabled FROM'))return {rows:[{enabled:true}]};if(sql.includes('AS visible,'))return {rows:[{total:64,visible:16}]};if(sql.includes(' AS inactive_blocked FROM facts'))return {rows:[{activation_ready:39,inactive_blocked:9}]};if(sql.includes('SELECT count(*)::int AS total FROM facts WHERE'))return {rows:[{total:39}]};if(sql.includes('SELECT * FROM facts WHERE'))return {rows:[{id:'p',sku:'INL100057',model_number:'CD-8118',is_active:false,published:true,activation_ready:true,checks:{identity:'passed'}}]};throw Error('Unexpected query '+sql);}})};
+ const router={get:(path,handler)=>{routes[path]=handler;},post:()=>{}};
+ createPipelineRouter({Router:()=>router},db);
+ let body,status=200;const res={set:()=>res,status:n=>{status=n;return res;},json:data=>{body=data;return res;}};
+ await routes['/products']({admin:{id:'admin'},query},res);assert.equal(status,200);return {body,calls};
+}
+test('ready view returns passed inactive rows rather than filtering them out',async()=>{const f=await listing({release:'activation_ready',active:'false'});assert.equal(f.body.products[0].activation_ready,true);assert.equal(f.body.products[0].checks.identity,'passed');const rows=f.calls.find(x=>x.sql.includes('SELECT * FROM facts WHERE'));assert.equal(rows.args[3],'');assert.equal(rows.args[4],'activation_ready');assert.equal(rows.sql.includes("($5='activation_ready' AND activation_ready)"),true);});
+test('ready predicate retains publication, approval, readiness and live pricing gates',async()=>{const f=await listing({release:'activation_ready'}),sql=f.calls.find(x=>x.sql.includes('SELECT * FROM facts WHERE')).sql;for(const gate of ["p.published AND NOT p.is_active","p.review_status='approved'",'p.approved_revision=p.revision','p.duplicate_of_product_id IS NULL','readiness.ready','readiness.assessed_revision=p.revision','public.catalogue_saleability_ready'])assert.equal(sql.includes(gate),true,gate);});
+test('activation counts are independent of stale search and activation filters',async()=>{const f=await listing({q:'needle',active:'true',check:'duplicate_review'});const summary=f.calls.find(x=>x.sql.includes(' AS inactive_blocked FROM facts'));assert.deepEqual(Array.from(summary.args),['','',null]);assert.equal(f.body.summary.activation_ready,39);});
+test('blocked inactive view is separate from ready activation',async()=>{const f=await listing({release:'inactive_blocked',active:'false'}),rows=f.calls.find(x=>x.sql.includes('SELECT * FROM facts WHERE'));assert.equal(rows.args[4],'inactive_blocked');assert.equal(rows.sql.includes("$5='inactive_blocked' AND NOT is_active AND NOT activation_ready"),true);});
+test('pagination remains server-side and bounded at 50 products',async()=>{const f=await listing({release:'activation_ready',page:2}),rows=f.calls.find(x=>x.sql.includes('SELECT * FROM facts WHERE'));assert.equal(rows.sql.includes('LIMIT 50 OFFSET $6'),true);assert.equal(rows.args[5],50);});
+test('listing is read-only and returns product model codes',async()=>{const f=await listing({});assert.equal(f.body.activation_views_ready,true);assert.equal(f.body.products[0].model_number,'CD-8118');assert.equal(f.calls[0].sql,'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');assert.equal(f.calls.some(x=>/^UPDATE /i.test(x.sql)),false);});
