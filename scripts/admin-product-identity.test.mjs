@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import * as identity from '../frontend/lib/admin-product-identity.mjs';
+test('SKU is followed by product model code in parentheses',()=>assert.equal(identity.productIdentifier({sku:'FIX100042',model_number:'CD-8269-AM'}),'FIX100042 (CD-8269-AM)'));
+test('model code formatting preserves meaningful spaces and punctuation',()=>assert.equal(identity.productIdentifier({sku:'FIX100023',model_number:'CD-6000-L1400 BK+SMK'}),'FIX100023 (CD-6000-L1400 BK+SMK)'));
+test('only surrounding whitespace is trimmed',()=>assert.equal(identity.productIdentifier({sku:' FIX100047 ',model_number:' CD-7573-8-SM '}),'FIX100047 (CD-7573-8-SM)'));
+test('missing model is explicit and does not invent an identifier',()=>assert.equal(identity.productIdentifier({sku:'FIX100042',model_number:null}),'FIX100042 (code not set)'));
+test('pending identities and empty input are safe',()=>{assert.equal(identity.productIdentifier({model_number:'CD-8269-AM'}),'SKU pending (CD-8269-AM)');assert.equal(identity.productIdentifier(null),'SKU pending (code not set)');});
+test('formatting never changes SKU or product data',()=>{const p={sku:'FIX100042',model_number:'CD-8269-AM'},copy={...p};identity.productIdentifier(p);assert.deepEqual(p,copy);});
+test('declarations include every exported function',()=>{const text=readFileSync(new URL('../frontend/lib/admin-product-identity.d.mts',import.meta.url),'utf8');const declarations=[...text.matchAll(/^export function\s+([A-Za-z_$][\w$]*)\s*\(/gm)].map(x=>x[1]).sort();assert.deepEqual(declarations,Object.keys(identity).sort());});
