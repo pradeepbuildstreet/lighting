@@ -1,5 +1,6 @@
 "use strict";
 const C=require('./catalogue-tag-product-core');
+const {visibilityByIds}=require('./catalogue-visibility');
 const protectedFields=['revision','published','review_status','approved_revision','approved_by','approved_at','duplicate_of_product_id','sku','name','product_kind','brand','model_number','description','currency'];
 function parseOperation(body){
  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>!['operation','value','expected_token'].includes(k)))C.fail('Invalid operational update');
@@ -17,11 +18,35 @@ function createProductOperations(db,audit){
   await c.query('SELECT pg_advisory_xact_lock(8102401)');await c.query('SELECT pg_advisory_xact_lock(8102403)');await db.actor(c,actor);
   const locked=(await c.query(select+' FOR UPDATE OF p',[id])).rows[0];if(!locked)C.fail('Product not found',404);if(locked.edit_token!==op.token)C.fail('Product changed; reload before updating',409);
   const {edit_token,...before}=locked;
+  if(op.column==='is_active'&&op.value===true&&before.published!==true)C.fail('Activation held: product must be published and currently eligible. Resolve publication blockers first.',409);
   await c.query('UPDATE products SET '+op.column+'=$2 WHERE id=$1',[id,op.value]);
   const current=(await c.query(select,[id])).rows[0],{edit_token:nextToken,...after}=current;assertPreserved(before,after);
   const other=op.column==='selling_price'?'is_active':'selling_price';if(JSON.stringify(before[other])!==JSON.stringify(after[other]))C.fail('Another operational field changed; transaction rolled back',409);
+  if(op.column==='is_active'&&op.value===true){
+   const eligibility=(await visibilityByIds(c,[id])).get(id);
+   if(eligibility?.visible!==true)C.fail('Activation held: '+(eligibility?.reasons?.join('; ')||'Current customer-visibility eligibility could not be established')+'. No activation was committed.',409);
+  }
   await audit(c,actor,'products',id,op.column==='selling_price'?'update_selling_price':'set_active',before,after);return {...after,edit_token:nextToken};
  });}
- return {get,set};
+ async function setBulk(actor,body){
+  if(!body||typeof body!=='object'||Array.isArray(body)||Object.keys(body).some(k=>k!=='items')||!Array.isArray(body.items)||!body.items.length||body.items.length>50)C.fail('Submit between 1 and 50 explicit product operations');
+  const results=[];
+  for(let index=0;index<body.items.length;index++){
+   const item=body.items[index];
+   try{
+    if(!item||typeof item!=='object'||Array.isArray(item)||Object.keys(item).some(k=>!['id','operation','value','expected_token'].includes(k)))C.fail('Invalid product operation');
+    const {id,...operation}=item;
+    const product=await set(actor,id,operation);
+    results.push({index,id:product.id,status:'updated',product});
+   }catch(e){
+    const known=[400,403,404,409].includes(e.status)||['23514','P0001','55P03','57014'].includes(e.code);
+    results.push({index,id:typeof item?.id==='string'?item.id:null,status:known?'held':'unconfirmed',reason:e.status&&known?e.message:known?'Database validation or transaction availability prevented this product update; reload its current state.':'Outcome could not be confirmed. Reload this product before retrying; do not repeat the write blindly.'});
+   }
+  }
+  const summary={selected:results.length,updated:0,held:0,unconfirmed:0};
+  for(const result of results)summary[result.status]++;
+  return {summary,results};
+ }
+ return {get,set,setBulk};
 }
 module.exports={createProductOperations,parseOperation,assertPreserved};
