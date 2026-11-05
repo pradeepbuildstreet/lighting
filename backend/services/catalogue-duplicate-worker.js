@@ -12,12 +12,20 @@ function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}
     WHERE product_id=$1 AND generation<>$2 AND lease_token=$3`,[job.product_id,job.generation,job.lease_token]);
   });
  }
- async function routeAudit(job,auditId,autoApprove){
+ async function routeAudit(job,auditId,autoApprove,canRefresh=true){
   if(!autoApprove){await finish(job,'awaiting_review',null,auditId);return;}
   const result=await service.detail(auditId);
   if(result.reviews.length){await finish(job,'awaiting_review',null,auditId);return;}
   if(result.candidates.length){await finish(job,'awaiting_review',null,auditId);return;}
-  await service.review({id:job.actor_id},auditId,'approve_distinct',null,null,{automated:true});
+  try{
+   await service.review({id:job.actor_id},auditId,'approve_distinct',null,null,{automated:true});
+  }catch(e){
+   if(!canRefresh||e.status!==409||e.message!=='Catalogue evidence changed; rerun the audit')throw e;
+   const fresh=await service.run({id:job.actor_id},job.product_id,String(job.product_revision),{refreshAuditId:auditId});
+   log({event:'duplicate_stale_audit_refreshed',product_id:job.product_id,previous_audit_id:auditId,audit_id:fresh.audit.id});
+   await routeAudit(job,fresh.audit.id,autoApprove,false);
+   return;
+  }
   await finish(job,'completed',null,auditId);
   log({event:'duplicate_clean_audit_approved',product_id:job.product_id,audit_id:auditId});
  }

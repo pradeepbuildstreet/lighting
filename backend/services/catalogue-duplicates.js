@@ -9,12 +9,19 @@ function createDuplicateService(db,dependencies={}){
  async function model(c,id){const row=(await c.query('SELECT EXISTS(SELECT 1 FROM product_attributes a JOIN product_kinds k ON k.id=a.product_kind_id JOIN products p ON p.id=a.product_id WHERE a.product_id=$1 AND k.code=p.product_kind) AS tag_model',[id])).rows[0];if(row?.tag_model!==true)error(409,'Matching tag-model attributes are required before duplicate audit or review');if(!(await c.query('SELECT version FROM catalogue_taxonomy_versions WHERE version=3')).rows.length)error(503,'Integrated tag-product cutover is not activated');}
  async function corpus(c){const rows=(await c.query('SELECT p.* FROM products p ORDER BY p.id LIMIT 1001 FOR SHARE OF p')).rows;if(rows.length>1000)error(409,'Catalogue exceeds the synchronous tag audit limit; a complete background scan is required');return tagScoring().loadEvidence(c,rows);}
  async function lock(c,actor){await c.query('SELECT pg_advisory_xact_lock(8102401)');await c.query('SELECT pg_advisory_xact_lock(8102403)');await db.actor(c,actor);}
- async function run(actor,id,revision){
+ async function run(actor,id,revision,{refreshAuditId=null}={}){
+  if(refreshAuditId)V.uuid(refreshAuditId);
   V.uuid(id);const expected=V.num(revision,'revision',{integer:true,positive:true});if(expected===null)V.fail('Revision required');
   return db.transaction(async c=>{
    await lock(c,actor);
    const product=(await c.query('SELECT * FROM products WHERE id=$1 FOR UPDATE',[id])).rows[0];
    if(!product)error(404,'Product not found');if(String(product.revision)!==String(expected))error(409,'Product changed; reload');
+   if(refreshAuditId){
+    if(product.review_status!=='pending_review'||product.duplicate_of_product_id)error(409,'Automatic audit refresh cannot replace a manual decision or correction');
+    const latest=(await c.query('SELECT id FROM product_duplicate_audits WHERE product_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[id])).rows[0];
+    if(latest?.id!==refreshAuditId)error(409,'A newer audit exists; automatic refresh stopped');
+    if((await c.query('SELECT id FROM product_duplicate_reviews WHERE audit_id=$1 LIMIT 1',[refreshAuditId])).rows.length)error(409,'Audit already reviewed; automatic refresh stopped');
+   }
    await model(c,id);const scorer=tagScoring(),hash=P.tagDigest;
    const records=await corpus(c),subject=records.find(p=>p.id===id);if(!subject)error(409,'Subject absent from audit scan');if(!subject.attributes)error(409,'Tag-model attributes are missing; correct the product before auditing');
    const found=records.filter(p=>p.id!==id).map(p=>({candidate:p,result:scorer.compare(subject,p)})).filter(x=>x.result&&x.result.overall_score>=35).sort((a,b)=>b.result.overall_score-a.result.overall_score||a.candidate.id.localeCompare(b.candidate.id));
