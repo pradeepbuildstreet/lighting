@@ -3,6 +3,7 @@ function createPublicationRouter(express,db){
  const router=express.Router(),service=require('../services/catalogue-publication').createPublicationService(db);
  const audit=require('../services/catalogue-products').createProductService(db).audit;
  const operations=require('../services/catalogue-product-operations').createProductOperations(db,audit);
+ router.use('/pipeline',require('./catalogue-pipeline').createPipelineRouter(express,db));
  router.use(require('./catalogue-ordering').createOrderingRouter(express,db,audit));
  router.use(require('./admin-product-browser').createBrowserRouter(express,db));
  const wrap=fn=>async(req,res)=>{try{res.set('Cache-Control','no-store');await fn(req,res);}catch(e){const status=[400,403,404,409].includes(e.status)?e.status:(e.code==='23514'||e.code==='P0001')?409:503;res.status(status).json({error:status===503?'Catalogue operation unavailable':e.status?e.message:'Database publication prerequisites not satisfied; reload saved state'});}};
