@@ -3,6 +3,7 @@ import {PublicationCompatibilityWarnings} from '@/components/PublicationCompatib
 import {useEffect,useRef,useState} from 'react';
 import {canReview,candidateState,reviewError,publicationAction} from './review-state.mjs';
 import ProductVisibility from './ProductVisibility';
+import DuplicateImageComparison from './DuplicateImageComparison';
 import type {CatalogueVisibility} from './ProductVisibility';
 type Product={id:string;sku:string;name:string;revision:number|string;published:boolean;review_status:string};
 type Audit={id:string;status:string;product_revision:number|string;scanned_count?:number;algorithm_version:string};
@@ -65,6 +66,7 @@ export default function ProductReviewPanel({mode='product',onReviewProduct,produ
    <button type="button" disabled={disabled} onClick={()=>void perform(()=>onOpenProduct(product.id,false))}>Edit product</button>
    {detail&&<>
     <p>Audit {detail.audit.id} · {detail.audit.status} · Subject revision {detail.audit.product_revision} · {detail.audit.scanned_count??'Unknown'} other products scanned · {detail.audit.algorithm_version}</p>
+    <DuplicateImageComparison key={product.id+':'+detail.audit.id} subject={product} candidates={detail.candidates} disabled={disabled}/>
     <div className="scroll"><table><thead><tr><th>Candidate</th><th>Heuristic score</th><th>Revision evidence</th><th>Evidence</th><th>View</th></tr></thead><tbody>{detail.candidates.map(c=><tr key={c.candidate_product_id}><td>{c.sku} — {c.name}</td><td>{c.overall_score}/100</td><td>{candidateState(c)}</td><td><details><summary>Show signals</summary><pre>{JSON.stringify(c.evidence,null,2)}</pre></details></td><td><button type="button" disabled={disabled} onClick={()=>void perform(()=>onOpenProduct(c.candidate_product_id,true))}>View candidate</button></td></tr>)}</tbody></table></div>
     {!detail.candidates.length&&<p>No candidates met the configured threshold. This is not proof of uniqueness.</p>}
     {detail.reviews.map((r,i)=><p key={i}>Recorded: {r.decision} · {r.notes}</p>)}

@@ -1,0 +1,11 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {comparisonImages,comparisonRevisionChanged} from './duplicate-image-comparison.mjs';
+test('private images use authenticated admin media route',()=>{const [image]=comparisonImages('subject',[{id:'photo',media_type:'image',storage_key:'private/key'}]);assert.equal(image.src,'/api/admin/catalogue/products/subject/media/photo/file');assert.equal(image.src.includes('private/key'),false);});
+test('subject and candidate images use their own product ID',()=>{const media=[{id:'photo',media_type:'image',storage_key:'key'}];assert.notEqual(comparisonImages('subject',media)[0].src,comparisonImages('candidate',media)[0].src);});
+test('primary image sorts first, then image order',()=>{const images=comparisonImages('p',[{id:'b',media_type:'image',sort_order:5},{id:'primary',media_type:'image',is_primary:true,sort_order:10},{id:'a',media_type:'image',sort_order:1}]);assert.deepEqual(images.map(x=>x.id),['primary','a','b']);});
+test('videos and malformed entries are not image choices',()=>assert.deepEqual(comparisonImages('p',[null,{id:'v',media_type:'video'},{id:'i',media_type:'image'}]).map(x=>x.id),['i']));
+test('missing media and invalid responses are explicit',()=>{assert.deepEqual(comparisonImages('p',[]),[]);assert.throws(()=>comparisonImages('p',null),/Invalid product media/);});
+test('external media accepts HTTPS without embedded credentials only',()=>{for(const external_url of ['javascript:alert(1)','http://example.com/a.jpg','https://user:pass@example.com/a.jpg'])assert.equal(comparisonImages('p',[{id:'i',media_type:'image',external_url}])[0].src,null);assert.equal(comparisonImages('p',[{id:'i',media_type:'image',external_url:'https://example.com/a.jpg'}])[0].src,'https://example.com/a.jpg');});
+test('image sorting does not mutate the media response',()=>{const media=[{id:'b',media_type:'image',sort_order:2},{id:'a',media_type:'image',sort_order:1}];comparisonImages('p',media);assert.deepEqual(media.map(x=>x.id),['b','a']);});
+test('revision mismatches and unknown revisions are flagged',()=>{assert.equal(comparisonRevisionChanged(8,'8'),false);assert.equal(comparisonRevisionChanged(8,9),true);assert.equal(comparisonRevisionChanged(8,null),true);assert.equal(comparisonRevisionChanged(undefined,8),true);});
