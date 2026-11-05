@@ -9,7 +9,7 @@ function parseOperation(body){
  if(body.operation==='active'){if(typeof body.value!=='boolean')C.fail('Active status must be true or false');return {column:'is_active',value:body.value,token:body.expected_token};}
  C.fail('Choose selling_price or active');
 }
-function assertPreserved(before,after){for(const key of protectedFields)if(JSON.stringify(before[key])!==JSON.stringify(after[key]))C.fail('Operational update unexpectedly changed '+key+'; transaction rolled back',409);}
+function assertPreserved(before,after,allowPublication=false){for(const key of protectedFields)if(!(allowPublication&&key==='published')&&JSON.stringify(before[key])!==JSON.stringify(after[key]))C.fail('Operational update unexpectedly changed '+key+'; transaction rolled back',409);}
 function createProductOperations(db,audit){
  const select='SELECT p.*,md5(to_jsonb(p)::text) AS edit_token FROM products p WHERE p.id=$1';
  async function get(id){const row=(await db.query(select,[C.uuid(id)])).rows[0];if(!row)C.fail('Product not found',404);return row;}
@@ -19,8 +19,10 @@ function createProductOperations(db,audit){
   const locked=(await c.query(select+' FOR UPDATE OF p',[id])).rows[0];if(!locked)C.fail('Product not found',404);if(locked.edit_token!==op.token)C.fail('Product changed; reload before updating',409);
   const {edit_token,...before}=locked;
   if(op.column==='is_active'&&op.value===true&&before.published!==true)C.fail('Activation held: product must be published and currently eligible. Resolve publication blockers first.',409);
-  await c.query('UPDATE products SET '+op.column+'=$2 WHERE id=$1',[id,op.value]);
-  const current=(await c.query(select,[id])).rows[0],{edit_token:nextToken,...after}=current;assertPreserved(before,after);
+  const pipeline=op.column==='selling_price'&&(await c.query("SELECT to_regclass('public.catalogue_product_readiness') IS NOT NULL AND EXISTS(SELECT 1 FROM pg_trigger WHERE tgrelid='public.products'::regclass AND tgname='pipeline_reassess' AND tgenabled IN ('O','A')) AS installed")).rows[0]?.installed===true;
+  await c.query('UPDATE products SET '+op.column+'=$2'+(pipeline?',published=false':'')+' WHERE id=$1',[id,op.value]);
+  if(pipeline)await c.query('SET CONSTRAINTS public.pipeline_reassess IMMEDIATE');
+  const current=(await c.query(select,[id])).rows[0],{edit_token:nextToken,...after}=current;assertPreserved(before,after,pipeline);
   const other=op.column==='selling_price'?'is_active':'selling_price';if(JSON.stringify(before[other])!==JSON.stringify(after[other]))C.fail('Another operational field changed; transaction rolled back',409);
   if(op.column==='is_active'&&op.value===true){
    const eligibility=(await visibilityByIds(c,[id])).get(id);
