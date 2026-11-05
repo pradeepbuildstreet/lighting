@@ -32,7 +32,8 @@ function createDuplicateService(db,dependencies={}){
   return {audit,candidates:(await db.query('SELECT c.*,p.sku,p.name,p.revision AS current_revision FROM product_duplicate_candidates c JOIN products p ON p.id=c.candidate_product_id WHERE c.audit_id=$1 ORDER BY c.overall_score DESC,p.id',[id])).rows,reviews:(await db.query('SELECT * FROM product_duplicate_reviews WHERE audit_id=$1 ORDER BY created_at,id',[id])).rows};
  }
  async function queue(){return {items:(await db.query("SELECT p.id,p.sku,p.name,p.revision,p.review_status,a.id AS audit_id,a.status AS audit_status,a.product_revision,a.scanned_count FROM products p LEFT JOIN LATERAL(SELECT * FROM product_duplicate_audits a WHERE a.product_id=p.id ORDER BY a.created_at DESC,a.id DESC LIMIT 1)a ON true WHERE p.review_status IN ('draft','pending_audit','pending_review') ORDER BY p.updated_at DESC,p.id LIMIT 200")).rows,limit:200};}
- async function review(actor,auditId,decision,notes,target){
+ async function review(actor,auditId,decision,notes,target,{automated=false}={}){
+  if(automated){if(decision!=='approve_distinct'||target)error(400,'Automatic review only supports distinct approval');notes='Automated distinct approval: completed current full-catalogue tags-evidence-v2 audit found zero potential duplicates. Publication remains subject to all existing readiness and saleability checks.';}
   V.uuid(auditId);if(!['approve_distinct','confirm_duplicate','request_correction','reject'].includes(decision))V.fail('Invalid review decision');notes=V.text(notes,'Review notes',true,5000);
   if(decision==='confirm_duplicate')V.uuid(target,'duplicate target');else if(target)V.fail('Duplicate target is only valid for confirm_duplicate');
   return db.transaction(async c=>{
@@ -45,6 +46,12 @@ function createDuplicateService(db,dependencies={}){
    if((await c.query('SELECT id FROM product_duplicate_reviews WHERE audit_id=$1 LIMIT 1',[auditId])).rows.length)error(409,'Audit already reviewed; run a new audit');
    const records=await corpus(c);if(!records.find(p=>p.id===product.id)?.attributes)error(409,'Tag-model attributes are missing; rerun after correction');
    if(audit.corpus_digest!==P.tagDigest(records))error(409,'Catalogue evidence changed; rerun the audit');
+   if(automated){
+    const configuration=(await c.query("SELECT enabled AND COALESCE((to_jsonb(c)->>'auto_approve_clean_audits')::boolean,false) AS enabled FROM public.catalogue_pipeline_configuration c WHERE singleton FOR SHARE")).rows[0];
+    if(configuration?.enabled!==true)error(409,'Automatic clean-audit approval is not enabled');
+    const candidateCount=Number((await c.query('SELECT count(*) AS count FROM product_duplicate_candidates WHERE audit_id=$1',[auditId])).rows[0]?.count);
+    require('./catalogue-clean-audit-policy').assertCleanAudit({audit,product,recordCount:records.length,candidateCount});
+   }
    if(decision==='confirm_duplicate'){
     if(target===product.id)V.fail('Cannot duplicate a product onto itself');
     const candidate=(await c.query('SELECT candidate_product_id FROM product_duplicate_candidates WHERE audit_id=$1 AND candidate_product_id=$2',[auditId,target])).rows[0];
@@ -53,7 +60,7 @@ function createDuplicateService(db,dependencies={}){
    const result=(await c.query('INSERT INTO product_duplicate_reviews(audit_id,decision,duplicate_of_product_id,reviewer_id,notes) VALUES($1,$2,$3,$4,$5) RETURNING *',[auditId,decision,target||null,actor.id,notes])).rows[0];
    const status={approve_distinct:'approved',confirm_duplicate:'duplicate',request_correction:'draft',reject:'rejected'}[decision],approved=decision==='approve_distinct';
    await c.query('UPDATE products SET published=false,review_status=$2,duplicate_of_product_id=$3,approved_revision=$4,approved_by=$5,approved_at=$6 WHERE id=$1',[product.id,status,target||null,approved?product.revision:null,approved?actor.id:null,approved?new Date():null]);
-   await auditLog(c,actor,product.id,'duplicate_review',{audit_id:auditId,decision,notes,target:target||null});return {review:result,review_status:status,published:false};
+   await auditLog(c,actor,product.id,automated?'duplicate_auto_distinct':'duplicate_review',{audit_id:auditId,decision,notes,target:target||null,review_source:automated?'automated_clean_audit':'manual'});return {review:result,review_status:status,published:false};
   });
  }
  return {run,detail,queue,review};

@@ -12,11 +12,21 @@ function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}
     WHERE product_id=$1 AND generation<>$2 AND lease_token=$3`,[job.product_id,job.generation,job.lease_token]);
   });
  }
+ async function routeAudit(job,auditId,autoApprove){
+  if(!autoApprove){await finish(job,'awaiting_review',null,auditId);return;}
+  const result=await service.detail(auditId);
+  if(result.reviews.length){await finish(job,'awaiting_review',null,auditId);return;}
+  if(result.candidates.length){await finish(job,'awaiting_review',null,auditId);return;}
+  await service.review({id:job.actor_id},auditId,'approve_distinct',null,null,{automated:true});
+  await finish(job,'completed',null,auditId);
+  log({event:'duplicate_clean_audit_approved',product_id:job.product_id,audit_id:auditId});
+ }
  async function cycle(){
   if(stopped)return;
   const installed=(await db.query("SELECT to_regclass('public.catalogue_pipeline_configuration') IS NOT NULL AND to_regclass('public.catalogue_duplicate_jobs') IS NOT NULL AS ready")).rows[0]?.ready===true;
   if(!installed)return;
-  if((await db.query('SELECT enabled FROM public.catalogue_pipeline_configuration WHERE singleton')).rows[0]?.enabled!==true)return;
+  const configuration=(await db.query("SELECT enabled,COALESCE((to_jsonb(c)->>'auto_approve_clean_audits')::boolean,false) AS auto_approve_clean_audits FROM public.catalogue_pipeline_configuration c WHERE singleton")).rows[0];
+  if(configuration?.enabled!==true)return;
   await db.query("UPDATE public.catalogue_duplicate_jobs SET status='failed',last_error='Lease expired after maximum attempts; administrator recheck required',lease_until=NULL,lease_token=NULL,updated_at=now() WHERE status='processing' AND lease_until<now() AND attempts>=5");
   const job=await db.transaction(async c=>(await c.query(`WITH due AS (
    SELECT product_id FROM public.catalogue_duplicate_jobs
@@ -30,9 +40,9 @@ function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}
    const current=(await db.query(`SELECT p.revision,p.review_status,a.id AS audit_id,a.status AS audit_status,a.product_revision,a.algorithm_version,a.corpus_digest
     FROM public.products p LEFT JOIN LATERAL(SELECT * FROM public.product_duplicate_audits WHERE product_id=p.id ORDER BY created_at DESC,id DESC LIMIT 1)a ON true WHERE p.id=$1`,[job.product_id])).rows[0];
    if(!current||['duplicate','rejected','archived'].includes(current.review_status)){await finish(job,'held','Current product state does not permit automatic auditing.');return;}
-   if(current.audit_status==='completed'&&String(current.product_revision)===String(current.revision)&&String(current.revision)===String(job.product_revision)&&current.algorithm_version==='tags-evidence-v2'&&current.corpus_digest){await finish(job,'awaiting_review',null,current.audit_id);return;}
+   if(current.audit_status==='completed'&&String(current.product_revision)===String(current.revision)&&String(current.revision)===String(job.product_revision)&&current.algorithm_version==='tags-evidence-v2'&&current.corpus_digest){await routeAudit(job,current.audit_id,configuration.auto_approve_clean_audits);return;}
    const result=await service.run({id:job.actor_id},job.product_id,String(job.product_revision));
-   await finish(job,'awaiting_review',null,result.audit.id);
+   await routeAudit(job,result.audit.id,configuration.auto_approve_clean_audits);
    log({event:'duplicate_job_completed',product_id:job.product_id});
   }catch(e){
    const permission=e.status===401||e.status===403;
