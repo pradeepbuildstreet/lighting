@@ -2,3 +2,4 @@ export function canReview(audit: {status: string; product_revision: unknown} | n
 export function candidateState(candidate: {evidence?: {candidate_revision?: unknown}; current_revision?: unknown}): 'unknown'|'current'|'changed';
 export function reviewError(decision: string, notes: string, target: string): string;
 export function publicationAction(state: {product?: {published?: boolean}; can_publish?: boolean} | null): 'unpublish'|'publish'|'blocked';
+export function reviewBlockReason(audit: {status: string; product_revision: unknown} | null | undefined, product: {revision: unknown; sku?: string | null; name?: string | null} | null | undefined, reviews?: unknown[], busy?: boolean): string;
