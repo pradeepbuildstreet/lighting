@@ -1,7 +1,7 @@
 "use client";
 import {PublicationCompatibilityWarnings} from '@/components/PublicationCompatibilityWarnings';
 import {useEffect,useRef,useState} from 'react';
-import {canReview,candidateState,reviewError,publicationAction} from './review-state.mjs';
+import {canReview,candidateState,reviewError,publicationAction,reviewBlockReason} from './review-state.mjs';
 import ProductVisibility from './ProductVisibility';
 import DuplicateImageComparison from './DuplicateImageComparison';
 import type {CatalogueVisibility} from './ProductVisibility';
@@ -26,7 +26,7 @@ export default function ProductReviewPanel({mode='product',onReviewProduct,produ
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;generation.current++;};},[]);
  async function refreshQueue(){const data=await api('/duplicates/queue');if(mounted.current)setQueue(data.items);return data.items as QueueRow[];}
  async function load(id:string,auditId?:string){
-  const ticket=++generation.current;setLoading(true);setDetail(null);setPublication(null);setProduct(null);setTarget('');setNotes('');
+  const ticket=++generation.current;setLoading(true);setDetail(null);setPublication(null);setProduct(null);setTarget('');setNotes('');setDecision('approve_distinct');
   try{
    const [p,state]=await Promise.all([api('/products/'+id),api('/products/'+id+'/publication')]);
    const latest=await api('/products/'+id+'/duplicate-audits/latest');const selectedAudit=auditId||latest.audit_id;
@@ -40,9 +40,9 @@ export default function ProductReviewPanel({mode='product',onReviewProduct,produ
  async function runAudit(){if(!product)return;const result=await api('/products/'+product.id+'/duplicate-audits','POST',{revision:product.revision});setNotice('Audit completed; no automatic approval or publication.');await load(product.id,result.audit.id);await onChanged();}
  async function saveReview(){
   if(!product||!detail)return;const reason=reviewError(decision,notes,target);if(reason)throw new Error(reason);
-  if(!window.confirm(`Record ${decision.replace(/_/g,' ')} for ${product.sku}? The product will remain unpublished.`))return;
+  if(!window.confirm(`Record ${decision.replace(/_/g,' ')} for ${product.sku}? This decision applies to this audit. Normal publication checks run afterward; activation is unchanged.`))return;
   await api('/duplicate-audits/'+detail.audit.id+'/review','POST',{decision,notes:notes.trim(),duplicate_of_product_id:decision==='confirm_duplicate'?target:null});
-  setNotice('Review recorded. Publication is a separate action.');await load(product.id,detail.audit.id);await onChanged();
+  setNotice('Review recorded. Normal publication checks reassess the product; activation is unchanged.');await load(product.id,detail.audit.id);await onChanged();
  }
  async function publish(value:boolean){
   if(!product)return;if(!window.confirm(`${value?'Publish':'Unpublish'} ${product.sku} in the separate catalogue? This does not activate a legacy-storefront product route.`))return;
@@ -51,7 +51,7 @@ export default function ProductReviewPanel({mode='product',onReviewProduct,produ
  }
  return <section className="panel" aria-label={mode==='queue'?'Review queue':'Product review and publication'}>
   <h2>{mode==='queue'?'Review queue':'Product review & publication'}</h2>
-  <p>Review evidence is heuristic—not a probability or visual similarity verdict. Imported products are not automatically approved or published.</p>
+  <p>Review evidence is heuristic—not a probability or visual similarity verdict. Potential duplicates require manual review. Eligible clean background audits can proceed through the normal publication pipeline.</p>
   {error&&<p className="error" role="alert">{error}</p>}{notice&&<p className="notice" role="status">{notice}</p>}
   <button type="button" disabled={disabled} onClick={()=>void perform(async()=>{await refreshQueue();if(product)await load(product.id,detail?.audit.id);})}>Refresh review state</button>
   {mode==='queue'&&<>
@@ -64,16 +64,20 @@ export default function ProductReviewPanel({mode='product',onReviewProduct,produ
    <button type="button" disabled={disabled} onClick={()=>void perform(runAudit)}>Run fresh duplicate audit</button>
    <button type="button" disabled={disabled} onClick={()=>void perform(()=>onOpenProduct(product.id,true))}>View product</button>
    <button type="button" disabled={disabled} onClick={()=>void perform(()=>onOpenProduct(product.id,false))}>Edit product</button>
+   <p><a href={'/admin/catalogue?workspace=review&product='+encodeURIComponent(product.id)}>Open independent duplicate review / image comparison</a></p>
    {detail&&<>
     <p>Audit {detail.audit.id} · {detail.audit.status} · Subject revision {detail.audit.product_revision} · {detail.audit.scanned_count??'Unknown'} other products scanned · {detail.audit.algorithm_version}</p>
     <DuplicateImageComparison key={product.id+':'+detail.audit.id} subject={product} candidates={detail.candidates} disabled={disabled}/>
     <div className="scroll"><table><thead><tr><th>Candidate</th><th>Heuristic score</th><th>Revision evidence</th><th>Evidence</th><th>View</th></tr></thead><tbody>{detail.candidates.map(c=><tr key={c.candidate_product_id}><td>{c.sku} — {c.name}</td><td>{c.overall_score}/100</td><td>{candidateState(c)}</td><td><details><summary>Show signals</summary><pre>{JSON.stringify(c.evidence,null,2)}</pre></details></td><td><button type="button" disabled={disabled} onClick={()=>void perform(()=>onOpenProduct(c.candidate_product_id,true))}>View candidate</button></td></tr>)}</tbody></table></div>
     {!detail.candidates.length&&<p>No candidates met the configured threshold. This is not proof of uniqueness.</p>}
     {detail.reviews.map((r,i)=><p key={i}>Recorded: {r.decision} · {r.notes}</p>)}
-    <fieldset disabled={disabled||!canReview(detail.audit,product,detail.reviews)}><legend>Record review decision</legend>
-     <label className="field">Decision<select value={decision} onChange={e=>{setDecision(e.target.value);setTarget('');}}><option value="approve_distinct">Approve distinct</option><option value="confirm_duplicate">Confirm duplicate</option><option value="request_correction">Request correction</option><option value="reject">Reject</option></select></label>
+    <p>Compare all {detail.candidates.length} candidate suggestions before approving this subject as distinct. Switching the image comparison does not save a review.</p>
+    {reviewBlockReason(detail.audit,product,detail.reviews,disabled)&&<p role="status">{reviewBlockReason(detail.audit,product,detail.reviews,disabled)}</p>}
+    <fieldset data-review-decision aria-label="Record duplicate review decision" disabled={disabled||!canReview(detail.audit,product,detail.reviews)||!!reviewBlockReason(detail.audit,product,detail.reviews)}><legend>Record review decision</legend>
+     <label className="field">Decision<select value={decision} onChange={e=>{setDecision(e.target.value);setTarget('');}}><option value="approve_distinct">Approve subject as distinct from all candidates</option><option value="confirm_duplicate">Confirm duplicate</option><option value="request_correction">Request correction</option><option value="reject">Reject</option></select></label>
      {decision==='confirm_duplicate'&&<label className="field">Duplicate of<select value={target} onChange={e=>setTarget(e.target.value)}><option value="">Choose candidate</option>{detail.candidates.map(c=><option key={c.candidate_product_id} value={c.candidate_product_id} disabled={candidateState(c)!=='current'}>{c.sku} — {c.name}</option>)}</select></label>}
-     <label className="field">Review notes<textarea maxLength={5000} value={notes} onChange={e=>setNotes(e.target.value)}/></label>
+     <label className="field">Review notes<textarea placeholder="Explain why the subject is distinct from all suggestions, or document the selected decision." maxLength={5000} value={notes} onChange={e=>setNotes(e.target.value)}/></label>
+     {reviewError(decision,notes,target)&&<p role="status">{reviewError(decision,notes,target)}</p>}
      <button type="button" disabled={!!reviewError(decision,notes,target)} onClick={()=>void perform(saveReview)}>Record decision</button>
     </fieldset>
    </>}

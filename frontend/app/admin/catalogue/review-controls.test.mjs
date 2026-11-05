@@ -1,0 +1,16 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {canReview,reviewBlockReason,reviewError,candidateState} from './review-state.mjs';
+const product={id:'subject',sku:'FIX100018',name:'Subject',revision:8};
+const audit={id:'audit',status:'completed',product_revision:8};
+test('completed current unreviewed audit is eligible',()=>{assert.equal(reviewBlockReason(audit,product), '');assert.equal(canReview(audit,product),true);});
+test('read-only candidate browsing is not a review eligibility input',()=>{for(const id of ['FIX100047','FIX100042'])assert.equal(reviewBlockReason(audit,{...product,compared_candidate:id}), '');});
+test('incomplete audit has explicit reason',()=>assert.match(reviewBlockReason({...audit,status:'running'},product),/complete/));
+test('revision conflict remains blocked',()=>{assert.match(reviewBlockReason({...audit,product_revision:7},product),/changed/);assert.equal(canReview({...audit,product_revision:7},product),false);});
+test('recorded decision cannot be submitted again',()=>{assert.match(reviewBlockReason(audit,product,[{decision:'approve_distinct'}]),/already/);assert.equal(canReview(audit,product,[{}]),false);});
+test('missing identity has explicit reason',()=>{assert.match(reviewBlockReason(audit,{...product,sku:null}),/SKU/);assert.match(reviewBlockReason(audit,{...product,name:' '}),/name/);});
+test('busy state has explicit reason',()=>assert.match(reviewBlockReason(audit,product,[],true),/progress/));
+test('no audit has explicit reason',()=>assert.match(reviewBlockReason(null,product),/fresh/));
+test('notes are mandatory for distinct approval',()=>{assert.equal(reviewError('approve_distinct','', ''),'Review notes are required');assert.equal(reviewError('approve_distinct','Both candidates compared; distinct variants.',''),'');});
+test('confirmed duplicate still requires an explicit target',()=>assert.equal(reviewError('confirm_duplicate','Same product',''),'Choose a duplicate target'));
+test('candidate revision evidence remains enforced',()=>{assert.equal(candidateState({current_revision:8,evidence:{candidate_revision:7}}),'changed');assert.equal(candidateState({current_revision:8,evidence:{candidate_revision:8}}),'current');});

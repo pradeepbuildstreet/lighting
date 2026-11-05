@@ -15,3 +15,13 @@ export function reviewError(decision,notes,target) {
 export function publicationAction(state) {
  return state?.product?.published ? 'unpublish' : state?.can_publish ? 'publish' : 'blocked';
 }
+export function reviewBlockReason(audit,product,reviews=[],busy=false) {
+ if(busy)return 'An operation is in progress. Wait for it to finish.';
+ if(!product)return 'Load a product before reviewing.';
+ if(!String(product.sku||'').trim()||!String(product.name||'').trim())return 'Save a product name and assign its SKU before recording a review.';
+ if(!audit)return 'Run a fresh duplicate audit before recording a review.';
+ if(audit.status!=='completed')return 'The duplicate audit must complete before review.';
+ if(String(audit.product_revision)!==String(product.revision))return 'Product changed since this audit. Run a fresh duplicate audit.';
+ if(reviews.length)return 'This audit already has a recorded decision. Inspect that decision; a new decision requires a fresh audit.';
+ return '';
+}
