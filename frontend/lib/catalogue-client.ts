@@ -13,7 +13,7 @@ const browserCategoryLoaders=new Map<string,(options?:RequestOptions)=>Promise<C
 export function getCatalogueClient(timeoutMs=15000):CatalogueClient {
  const base=getApiBaseUrl();
  const client=createClient({base,fetchImpl:(input,init)=>fetch(input,init),timeoutMs});
- const list:CatalogueClient['list']=(query={},options)=>{const params=buildListQuery(query),encoded=params.get('tag_filters');params.delete('tag_filters');if(!encoded)return client.list(params,options);const tagged=createClient({base,fetchImpl:(input,init)=>{const url=String(input);return fetch(url+(url.includes('?')?'&':'?')+'tag_filters='+encodeURIComponent(encoded),init);},timeoutMs});return tagged.list(params,options);};
+ const list:CatalogueClient['list']=(query={},options)=>{const params=buildListQuery(query),extra=new URLSearchParams();for(const key of ['tag_filters','discount_status','min_discount','max_discount']){const value=params.get(key);if(value!==null){extra.set(key,value);params.delete(key);}}if(!extra.size)return client.list(params,options);const scoped=createClient({base,fetchImpl:(input,init)=>{const url=String(input);return fetch(url+(url.includes('?')?'&':'?')+extra.toString(),init);},timeoutMs});return scoped.list(params,options);};
  const categories=(options?:RequestOptions)=>client.categories(options).then(result=>({...result,categories:visibleCategoryTree(result.categories)}));
  if(typeof window==='undefined')return {...client,list,categories};
  const key=base+'|'+timeoutMs;let shared=browserCategoryLoaders.get(key);
