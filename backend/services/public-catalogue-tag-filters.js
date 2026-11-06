@@ -1,4 +1,5 @@
 "use strict";
+const {parseDiscountFilters}=require('./discount-filter-core');
 const UUID=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function fail(message,status=400){const e=new Error(message);e.status=status;throw e;}
 function uuid(v){if(typeof v!=='string'||!UUID.test(v))fail('Invalid tag filter reference');return v.toLowerCase();}
@@ -22,8 +23,14 @@ const WITH=TREE+`,scope_nodes AS (
  AND ($3::text='' OR EXISTS(SELECT 1 FROM product_categories pc JOIN active_tree child ON child.id=pc.category_id JOIN active_tree target ON target.id=ANY(child.ids) WHERE pc.product_id=p.id AND target.slug=$3::text))
  AND ($4::text='' OR p.brand=$4::text) AND ($5::text='' OR p.currency=$5::text)
  AND ($6::numeric IS NULL OR p.selling_price>=$6::numeric) AND ($7::numeric IS NULL OR p.selling_price<=$7::numeric)
+ AND EXISTS(SELECT 1 FROM products discount_product WHERE discount_product.id=p.id
+  AND (coalesce($8::jsonb->>'discount_status','all')='all'
+   OR ($8::jsonb->>'discount_status'='discounted' AND discount_product.default_discount_percent>0)
+   OR ($8::jsonb->>'discount_status'='none' AND discount_product.default_discount_percent=0))
+  AND (($8::jsonb->>'min_discount')::numeric IS NULL OR discount_product.default_discount_percent>=($8::jsonb->>'min_discount')::numeric)
+  AND (($8::jsonb->>'max_discount')::numeric IS NULL OR discount_product.default_discount_percent<=($8::jsonb->>'max_discount')::numeric))
 ),selections AS (
- SELECT * FROM jsonb_to_recordset($8::jsonb) AS s(group_id uuid,tag_ids uuid[],unclassified boolean)
+ SELECT * FROM jsonb_to_recordset(coalesce($8::jsonb->'tags',$8::jsonb)) AS s(group_id uuid,tag_ids uuid[],unclassified boolean)
 ),applicable AS (
  SELECT DISTINCT b.id AS product_id,g.id AS group_id FROM base b JOIN product_categories pc ON pc.product_id=b.id
  JOIN scope_nodes n ON n.id=pc.category_id JOIN category_tag_groups cg ON cg.category_id=n.id JOIN configured_groups g ON g.id=cg.tag_group_id
@@ -53,7 +60,7 @@ const SQL={
  ) SELECT jsonb_build_object('total',(SELECT count(*) FROM option_counts),'items',coalesce((SELECT jsonb_agg(to_jsonb(x)) FROM (SELECT id,code,name,product_count FROM option_counts ORDER BY sort_order,name,id LIMIT $11::integer OFFSET $12::integer) x),'[]'::jsonb)) AS result`
 };
 function createTagListingService(db,domain=require('./public-catalogue-v1')){
- function input(query){const o=domain.options(query),selected=selections(query.tag_filters);return {o,selected,args:[o.q,o.kind,o.category,o.brand,o.currency,o.min,o.max,JSON.stringify(selected)]};}
+ function input(query){const o=domain.options(query),selected=selections(query.tag_filters),discount=parseDiscountFilters(query);const payload={tags:selected,discount_status:discount.status,min_discount:discount.min,max_discount:discount.max};return {o,selected,args:[o.q,o.kind,o.category,o.brand,o.currency,o.min,o.max,JSON.stringify(payload)]};}
  async function read(work){return db.transaction(async c=>{await c.query('SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY');await c.query("SET LOCAL statement_timeout='5s'");if(!(await c.query('SELECT version FROM catalogue_taxonomy_versions WHERE version=2')).rows.length)fail('Tag product storage required',503);return work(c);});}
  async function inventory(c,args){if((await c.query(SQL.inventory,args)).rows.length>200)fail('Tag filter scope exceeds the synchronous limit; narrow the category',503);}
  async function hydrate(c,rows){if(!rows.length)return [];const ids=rows.map(p=>p.id),media=(await c.query("SELECT m.id,m.product_id,m.media_type,m.external_url,m.storage_key,m.alt_text,m.caption,m.sort_order,m.is_primary,m.poster_media_id FROM product_media m JOIN public_products p ON p.id=m.product_id WHERE m.product_id=ANY($1::uuid[]) AND m.processing_status IN ('completed','not_applicable') AND m.is_primary AND m.media_type='image' ORDER BY m.sort_order,m.id",[ids])).rows,categories=(await c.query(TREE+' SELECT ct.id,ct.slug,ct.name,ct.slugs,pc.product_id,pc.is_primary FROM product_categories pc JOIN active_tree ct ON ct.id=pc.category_id WHERE pc.product_id=ANY($1::uuid[]) ORDER BY pc.is_primary DESC,ct.sort_order,ct.name',[ids])).rows;return rows.map(p=>domain.productDTO(p,media.filter(m=>m.product_id===p.id),categories.filter(cat=>cat.product_id===p.id)));}

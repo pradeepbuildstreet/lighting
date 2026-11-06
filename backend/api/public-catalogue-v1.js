@@ -16,7 +16,7 @@ function createRouter(express,db,rateLimit){
  router.get('/categories',wrap(async(_req,res)=>res.json(await service.categories())));
  router.get('/filters',wrap(async(_req,res)=>res.json(await service.filters())));
  router.get('/tag-filters',wrap(async(req,res)=>res.json(await tagService.facets(req.query))));
- router.get('/products',wrap(async(req,res)=>res.json(await (req.query.tag_filters===undefined?service.list(req.query):tagService.list(req.query)))));
+ router.get('/products',wrap(async(req,res)=>{const scoped=['tag_filters','discount_status','min_discount','max_discount'].some(key=>req.query[key]!==undefined);res.json(await (scoped?tagService.list(req.query):service.list(req.query)));}));
  router.get('/products/id/:id/discovery',wrap(async(req,res)=>res.json(await discovery.discover(req.params.id))));
  router.get('/products/id/:id/compatibility',(_req,res)=>res.status(410).set('Cache-Control','no-store').json({error:'Compatibility is assessed in admin; current eligible results use /api/product-insights/compatible-lights/:id'}));
  router.get('/products/id/:id',wrap(async(req,res)=>res.json(await service.detail(req.params.id,true))));
