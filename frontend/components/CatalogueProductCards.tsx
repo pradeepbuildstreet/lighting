@@ -10,6 +10,7 @@ import type {CatalogueProduct} from '@/lib/catalogue-types';
 import {ProductThumbnail} from './ProductThumbnail';
 import card from './CatalogueProductCard.module.css';
 import grid from './CatalogueProductGrid.module.css';
+import share from './ProductShareCompact.module.css';
 function EnquiryCountProductCards({products,browseCategory,returnTo,maxRows}:{products:CatalogueProduct[];browseCategory?:string;returnTo?:string;maxRows?:3}){
  const cards=<div className={`${grid.products} ${maxRows===3?grid.threeRows:''}`}>{products.map(p=>{
   const image=p.media.find(m=>m.type==='image'&&m.primary)||p.media.find(m=>m.type==='image');
@@ -25,7 +26,7 @@ function EnquiryCountProductCards({products,browseCategory,returnTo,maxRows}:{pr
      <div className={card.footer}><span className={card.view}>View product</span><div className={card.enquiries}><PublicEnquiryCount productId={p.id}/></div></div>
     </div>
    </Link>
-   <ProductShare productId={p.id} name={p.name} compact />
+   <div className={share.imageActions}><ProductShare productId={p.id} name={p.name} compact /></div>
    <div className="product-result-wishlist flex items-start"><WishlistButton productId={p.id} sku={p.sku} name={p.name} compact /></div>
   </article>;
  })}</div>;
