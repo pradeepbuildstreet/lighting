@@ -33,7 +33,7 @@ jobs:
         run: npm ci --no-audit --no-fund
       - name: Require actual XLSX dependency
         run: node -e "require('exceljs'); console.log('ExcelJS available for real workbook roundtrip tests')"
-      - name: Run complete backend test suite including HTTP protocol tests
+      - name: Run complete backend and service regression suites
         id: tests
         run: npm test 2>&1 | tee backend-tests.log
       - name: Retain backend test log
@@ -67,9 +67,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install locked frontend dependencies
         run: npm ci --no-audit --no-fund
-      - name: Run frontend model and forwarding tests
+      - name: Run frontend model, forwarding and group-review helper tests
         id: tests
-        run: node --test test/*.test.mjs tests/*.test.cjs 2>&1 | tee frontend-tests.log
+        run: node scripts/run-tests.mjs 2>&1 | tee frontend-tests.log
       - name: Type-check the frontend including TSX
         id: types
         if: ${{ !cancelled() && steps.tests.outcome != 'skipped' }}
