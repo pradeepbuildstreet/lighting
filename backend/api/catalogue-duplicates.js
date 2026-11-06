@@ -5,11 +5,13 @@ function createDuplicateRouter(express,db){
  const history=require('../services/catalogue-resolution-history').createResolutionHistoryService(db);
  const reversals=require('../services/catalogue-duplicate-reversals').createDuplicateReversalService(db);
  const route=fn=>async(req,res)=>{try{res.set('Cache-Control','no-store');await fn(req,res);}catch(e){const status=[400,403,404,409].includes(e.status)?e.status:503;res.status(status).json({error:status===503?'Duplicate review unavailable':e.message});}};
- // Mount after the existing requireAdmin middleware, never as a public router.
+ // Mount only after requireAdmin; services also revalidate the active administrator.
  router.get('/duplicates/queue',route(async(_req,res)=>res.json(await service.queue())));
  router.get('/products/:id/duplicate-history',route(async(req,res)=>res.json(await history.list(req.admin,req.params.id,req.query.before))));
  router.get('/duplicates/groups/:id/history',route(async(req,res)=>res.json(await history.detail(req.admin,req.params.id))));
- router.get('/products/:id/duplicate-reversals',route(async(req,res)=>res.json(await reversals.history(req.admin,req.params.id))));
+ router.get('/products/:id/duplicate-reversal-preview',route(async(req,res)=>res.json(await reversals.preview(req.admin,req.params.id))));
+ router.get('/products/:id/duplicate-reversals',route(async(req,res)=>res.json(await reversals.history(req.admin,req.params.id,req.query.before))));
+ router.get('/duplicates/groups/:id/reversals',route(async(req,res)=>res.json(await reversals.groupHistory(req.admin,req.params.id,req.query.before))));
  router.post('/products/:id/duplicate-reversal',route(async(req,res)=>{const result=await reversals.reverse(req.admin,req.params.id,req.body);res.status(result.replayed?200:201).json(result);}));
  router.post('/duplicates/groups/preview',route(async(req,res)=>res.json(await groups.preview(req.admin,req.body))));
  router.post('/duplicates/groups/confirm',route(async(req,res)=>{const result=await groups.confirm(req.admin,req.body);res.status(result.replayed?200:201).json(result);}));

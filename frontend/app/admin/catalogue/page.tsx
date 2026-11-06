@@ -9,5 +9,5 @@ export const metadata:Metadata={title:'Catalogue | Luminoza',robots:{index:false
 export default function CataloguePage({searchParams}:{searchParams?:{workspace?:string;reference?:string;groups?:string;product?:string}}){
  if(searchParams?.workspace==='reference'||searchParams?.reference)redirect(referenceDataHref(searchParams.reference,searchParams.groups==='global'));
  const historyHref='/admin/catalogue/resolutions'+(searchParams?.product?'?product='+encodeURIComponent(searchParams.product):'');
- return <AdminShell active="catalogue"><p><a href={historyHref} target="_blank" rel="noreferrer">Read-only group resolution history (opens separately)</a></p><Suspense fallback={<p role="status">Loading catalogue…</p>}><CatalogueWorkspace/></Suspense></AdminShell>;
+ return <AdminShell active="catalogue"><p><a href={historyHref} target="_blank" rel="noreferrer">Resolution history and audited reversal (opens separately)</a></p><Suspense fallback={<p role="status">Loading catalogue…</p>}><CatalogueWorkspace/></Suspense></AdminShell>;
 }
