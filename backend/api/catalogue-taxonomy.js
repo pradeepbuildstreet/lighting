@@ -2,6 +2,7 @@
 const {createTaxonomyService}=require('../services/catalogue-taxonomy');
 function createTaxonomyRouter(express,db,audit){const router=express.Router(),service=createTaxonomyService(db,audit);
  router.use((req,res,next)=>{res.set('Cache-Control','private, no-store');if(!req.admin?.id)return res.status(401).json({error:'Admin sign-in required'});return next();});
+ router.use('/discounts',require('./product-discounts').createRouter(express,db,audit));
  router.use('/category-images',require('./category-images').createRouter(express,db,audit));
  router.use('/vendor-workbook',require('./vendor-workbook').createRouter(express,db,audit));
  const categoryNames=require('./catalogue-category-naming'),rules=require('./catalogue-rulebook');
