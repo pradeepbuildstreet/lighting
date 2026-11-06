@@ -1,0 +1,10 @@
+"use strict";
+const assert=require('node:assert/strict');
+const {normalise,buildWhere}=require('./admin-product-browser-core');
+assert.equal(buildWhere(normalise({})).where,'true');
+const q=buildWhere(normalise({active:'false',published:'true',discount_status:'discounted',min_discount:'12.50',max_discount:'30'}));
+assert(q.where.includes('p.default_discount_percent>0'));assert(q.where.includes('p.is_active=$1::boolean'));assert(q.where.includes('p.published=$2::boolean'));assert.deepEqual(q.values,[false,true,'12.5','30']);
+assert.equal(buildWhere(normalise({discount_status:'none'})).where,'p.default_discount_percent=0');
+assert.throws(()=>normalise({min_discount:'20',max_discount:'10'}),{status:400});assert.throws(()=>normalise({min_discount:'1 OR 1=1'}),{status:400});
+assert.equal(buildWhere(normalise({only_ids:[],discount_status:'none'})).where,'false AND p.default_discount_percent=0');
+console.log('Shared admin browser discount, status, bound parameter and default compatibility tests passed');
