@@ -2,6 +2,7 @@
 const crypto=require('node:crypto'),V=require('../validators/catalogue');
 const P=require('./catalogue-duplicate-model');
 const G=require('./catalogue-group-review-policy');
+const {assertWorkerLease}=require('./catalogue-worker-lease');
 function error(status,message){const e=new Error(message);e.status=status;throw e;}
 function digest(rows){return crypto.createHash('sha256').update(JSON.stringify(rows.map(p=>[p.id,String(p.revision),p.is_active]).sort((a,b)=>a[0].localeCompare(b[0])))).digest('hex');}
 function createDuplicateService(db,dependencies={}){
@@ -11,7 +12,7 @@ function createDuplicateService(db,dependencies={}){
  // Keep the full snapshot for freshness and scan-completeness checks. Matching excludes resolved duplicates below.
  async function corpus(c){const rows=(await c.query('SELECT p.* FROM products p ORDER BY p.id LIMIT 1001 FOR SHARE OF p')).rows;if(rows.length>1000)error(409,'Catalogue exceeds the synchronous tag audit limit; a complete background scan is required');return tagScoring().loadEvidence(c,rows);}
  async function lock(c,actor){await c.query('SELECT pg_advisory_xact_lock(8102401)');await c.query('SELECT pg_advisory_xact_lock(8102403)');await db.actor(c,actor);}
- async function run(actor,id,revision,{refreshAuditId=null}={}){
+ async function run(actor,id,revision,{refreshAuditId=null,jobLease}={}){
   if(refreshAuditId)V.uuid(refreshAuditId);
   V.uuid(id);const expected=V.num(revision,'revision',{integer:true,positive:true});if(expected===null)V.fail('Revision required');
   return db.transaction(async c=>{
@@ -19,11 +20,16 @@ function createDuplicateService(db,dependencies={}){
    const product=(await c.query('SELECT * FROM products WHERE id=$1 FOR UPDATE',[id])).rows[0];
    if(!product)error(404,'Product not found');if(String(product.revision)!==String(expected))error(409,'Product changed; reload');
    G.assertEligibleSubject(product);
+   if(jobLease!==undefined)await assertWorkerLease(c,actor,product,jobLease);
    if(refreshAuditId){
     if(product.review_status!=='pending_review'||product.duplicate_of_product_id)error(409,'Automatic audit refresh cannot replace a manual decision or correction');
     const latest=(await c.query('SELECT id FROM product_duplicate_audits WHERE product_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[id])).rows[0];
     if(latest?.id!==refreshAuditId)error(409,'A newer audit exists; automatic refresh stopped');
     if((await c.query('SELECT id FROM product_duplicate_reviews WHERE audit_id=$1 LIMIT 1',[refreshAuditId])).rows.length)error(409,'Audit already reviewed; automatic refresh stopped');
+   }else if(jobLease!==undefined){
+    if(product.review_status==='approved')error(409,'Automatic audit cannot replace a completed approval');
+    const latest=(await c.query('SELECT id,product_revision FROM product_duplicate_audits WHERE product_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[id])).rows[0];
+    if(latest&&String(latest.product_revision)===String(product.revision)&&(await c.query('SELECT id FROM product_duplicate_reviews WHERE audit_id=$1 LIMIT 1',[latest.id])).rows.length)error(409,'Automatic audit cannot replace a recorded review');
    }
    await model(c,id);const scorer=tagScoring(),hash=P.tagDigest;
    const records=await corpus(c),subject=records.find(p=>p.id===id);if(!subject)error(409,'Subject absent from audit scan');if(!subject.attributes)error(409,'Tag-model attributes are missing; correct the product before auditing');
@@ -42,7 +48,7 @@ function createDuplicateService(db,dependencies={}){
   return {audit,candidates:(await db.query('SELECT c.*,p.sku,p.name,p.revision AS current_revision FROM product_duplicate_candidates c JOIN products p ON p.id=c.candidate_product_id WHERE c.audit_id=$1 ORDER BY c.overall_score DESC,p.id',[id])).rows,reviews:(await db.query('SELECT * FROM product_duplicate_reviews WHERE audit_id=$1 ORDER BY created_at,id',[id])).rows};
  }
  async function queue(){return {items:(await db.query("SELECT p.id,p.sku,p.name,p.revision,p.review_status,a.id AS audit_id,a.status AS audit_status,a.product_revision,a.scanned_count FROM products p LEFT JOIN LATERAL(SELECT * FROM product_duplicate_audits a WHERE a.product_id=p.id ORDER BY a.created_at DESC,a.id DESC LIMIT 1)a ON true WHERE p.review_status IN ('draft','pending_audit','pending_review') AND p.duplicate_of_product_id IS NULL ORDER BY p.updated_at DESC,p.id LIMIT 200")).rows,limit:200};}
- async function review(actor,auditId,decision,notes,target,{automated=false}={}){
+ async function review(actor,auditId,decision,notes,target,{automated=false,jobLease}={}){
   if(automated){if(decision!=='approve_distinct'||target)error(400,'Automatic review only supports distinct approval');notes='Automated distinct approval: completed current full-catalogue tags-evidence-v2 audit found zero potential duplicates. Publication remains subject to all existing readiness and saleability checks.';}
   V.uuid(auditId);if(!['approve_distinct','confirm_duplicate','request_correction','reject'].includes(decision))V.fail('Invalid review decision');notes=V.text(notes,'Review notes',true,5000);
   if(decision==='confirm_duplicate')V.uuid(target,'duplicate target');else if(target)V.fail('Duplicate target is only valid for confirm_duplicate');
@@ -52,6 +58,7 @@ function createDuplicateService(db,dependencies={}){
    const product=(await c.query('SELECT * FROM products WHERE id=$1 FOR UPDATE',[audit.product_id])).rows[0];
    if(!product||audit.status!=='completed'||String(audit.product_revision)!==String(product.revision))error(409,'Audit is stale or incomplete; rerun it');
    G.assertEligibleSubject(product);
+   if(jobLease!==undefined)await assertWorkerLease(c,actor,product,jobLease);
    await model(c,product.id);P.assertAlgorithm(audit,true);
    const latest=(await c.query('SELECT id FROM product_duplicate_audits WHERE product_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[product.id])).rows[0];if(latest?.id!==auditId)error(409,'A newer audit exists');
    if((await c.query('SELECT id FROM product_duplicate_reviews WHERE audit_id=$1 LIMIT 1',[auditId])).rows.length)error(409,'Audit already reviewed; run a new audit');

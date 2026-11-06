@@ -1,31 +1,29 @@
 # Catalogue group review - release integration
 
 ## Status
-Partial implementation, source only. Decision policy, audit-service exclusions, atomic group API, application retained-primary publication validation and UI draft are committed. Migrations 13 and 14 are source drafts, not PostgreSQL execution-validated or applied. The UI is not TypeScript/build/browser verified. This is not a completed or deployed feature.
+Partial implementation, source only. Group policy, audit-service exclusion, atomic group API, retained-primary publication checks, UI draft and migrations 13/14 are committed. This step supplies transaction-level worker lease guards. Worker call-site wiring/claim filters are the next dependent commit and are NOT included here; the current worker race must not be described as fixed yet. No migration has been applied and no deployment has been verified.
 
-## Installed-schema inspection
-A separately approved read-only Supabase inspection of luminoza on 2026-11-06 confirmed that group tables are absent. It also found that product_identity_changed resets identity edits to draft, catalogue_enqueue_duplicate checks review status but not the duplicate link, and catalogue_reassess_product explicitly requires approve_distinct. The existing invalidate_product already preserves duplicate/rejected/archived status. Only schema definitions were read; no product records were read or changed.
+## Audit-write lease interface
+Internal run options now accept jobLease alongside refreshAuditId. Internal review options accept jobLease alongside automated. When supplied, a lease must match the product, exact revision, originating actor, processing status, generation, token and unexpired lease_until. The service checks it after shared advisory locks, actor validation and product row locking, using the same transaction client and a job-row FOR UPDATE lock before any audit/review/product write. Null or malformed supplied leases fail closed; bigint generations retain exact decimal strings.
 
-## Migration 14 source changes
-Requires migration 13's group tables, review link and approval-policy version plus the existing pipeline. It patches exactly one inspected clause in each of identity invalidation, duplicate enqueueing and publication reassessment, preserving installed function attributes and unrelated logic. Unexpected or repeated clauses fail closed rather than silently rewriting an unknown definition.
+Leased automatic initial audits cannot replace an approved product or a recorded review of the current revision. Automatic refresh retains the existing current-audit/unreviewed/pending-review restrictions. Approval retains current evidence, model, enabled-auto-approval, complete scan and zero-candidate requirements. Explicit manual operations retain their existing interface; public routes do not accept worker options from request bodies.
 
-Identity changes preserve duplicate status when either the old status or old duplicate link identifies a confirmed duplicate. A late BEFORE ROW product guard blocks ordinary reopening/retargeting, requires consistent duplicate status and keeps affected duplicate writes inactive/unpublished with approval fields cleared. A job guard holds jobs for confirmed duplicates and clears their leases, advancing generation on updates. No existing product records or jobs are backfilled by this migration. Existing inconsistencies require separately reviewed remediation; the migration does not invent a primary target.
+## Next worker integration
+Every worker initial run, bounded refresh and automatic review must pass the immutable claimed lease. Claim SQL must exclude duplicate status and duplicate links without excluding legitimate inactive products. The post-claim state check must also recognize duplicate links. Lost leases must not trigger the evidence-refresh path. Existing held-recovery, bounded retry and generation/token acknowledgement checks must remain. These caller changes are prepared separately, not enabled by this guard-only commit.
 
-Database reassessment now recognizes retained-primary reviews only with a group link, matching reviewer and current_duplicate_approval validation. Existing price, dealer pricing, category, image, model and current-revision checks are preserved by the narrowly scoped replacement. Migration 13 alone is not sufficient for automatic retained-primary reassessment in the inspected schema.
+## Database and UI boundaries
+Read-only schema inspection confirmed missing group tables and exposed identity invalidation, scheduling and database reassessment gaps. Migration 14 addresses those gaps in source and requires migration 13. Both require disposable PostgreSQL execution, rollback, permission and concurrency tests before live application. The group UI draft is not TypeScript/build/browser verified. Exact request recovery is not a substitute for end-to-end save tests.
 
-## Existing group workflow
-The group UI/API supports 2 to 50 explicit products within the complete-catalogue 1000-record limit, mixed duplicate clusters plus distinct products, explicit per-product decisions, image comparison, outside-candidate blocking, notes, exact confirmation and preserved retained activation. Unknown confirmation outcomes retain the exact body/key for replay. Application publication validates exact group evidence. Customer visibility remains separate and requires activity, an active dealer and other eligibility rules.
+## Verification
+The 13 audit-write lease regression cases passed in a temporary Node.js harness with mocked SQL/actor transactions, injected scoring, required validator/policy helper logic, and the recorded evidence/clean-audit implementations. They cover scope/ownership/expiry-result rejection, exact bigint generation handling, stale-run/refresh/review rejection before writes, current approval/manual-review protection, successful clean approval and simulated generation invalidation. They do not prove actual PostgreSQL row-lock/expiry/concurrency behaviour. A separately prepared combined worker draft also passed focused harness checks; it is not part of this commit.
 
-## Verification limits
-Earlier preparation checks: 19 policy, 31 mocked audit-service, 14 migration-13 text checks, 18 mocked group-service, 77 focused publication/visibility and 21 UI-helper/source checks. This step passed 14 additional Node.js source-contract checks for migration 14. These checks inspect source text; they do not establish SQL/PLpgSQL validity, trigger execution, security, concurrency or deployed behaviour. Read-only schema inspection is not a migration execution test.
-
-## Critical remaining work
-- Implement worker claim exclusion and lease/generation validation inside the same locked audit-write transaction. Job acknowledgement guards alone do not prevent a stale in-flight worker from resetting a retained primary's approval. Review both normal audit runs and automatic refresh/review paths, then test the race against group confirmation.
-- Execute migrations 13/14 with positive, negative, rollback, ordering and permission tests on disposable PostgreSQL, and verify live-schema compatibility before any live application.
-- Verify editor/import/media/reference/pricing paths against the database guards; add explicit audited duplicate reversal and read-only resolution history. Ordinary writes remain unable to reverse duplicates until that reviewed mechanism exists.
-- Type-check/build the frontend and exercise rendered mixed review, comparisons, outside scope, navigation, stale evidence, timeout/reload/retry and receipts.
-- Run complete project, HTTP authorization and worker-race regressions. Drain old workers during a separately reviewed rollout.
+## Remaining before release enablement
+- Commit worker wiring, claim filtering and their regression updates; run real two-worker/group-confirmation races with transaction rollback assertions.
+- Execute and validate migrations 13/14 on disposable PostgreSQL against the inspected schema, including editor/import/media/reference/pricing paths.
+- Add explicit audited reversal and read-only resolution history; ordinary writes must not serve as reversal.
+- Type-check/build the frontend and exercise rendered group selection, comparisons, mixed decisions, outside scope, navigation, stale previews, timeout/reload/exact retry and receipts.
+- Run full project and HTTP authorization regressions. Drain old workers during a separately reviewed rollout.
 - Apply migrations, deploy and make live product decisions only under separate exact-action approvals.
 
-## Source-contract check
-node --test backend/test/catalogue-duplicate-protection-contract.test.js
+## Focused audit-write tests
+node --test backend/test/catalogue-worker-lease.test.js
