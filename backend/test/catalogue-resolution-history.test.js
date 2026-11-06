@@ -1,0 +1,30 @@
+"use strict";
+const test=require('node:test'),assert=require('node:assert/strict');
+const {createResolutionHistoryService}=require('../services/catalogue-resolution-history');
+const id='00000000-0000-4000-8000-000000000001',gid='00000000-0000-4000-8000-000000000002';
+function fixture({denied=false,installed=true,product=true,group=true,cursor=true,rows=[]}={}){
+ const calls=[];let authorized=false;
+ const c={query:async(sql,args)=>{calls.push({sql,args});
+  if(sql.startsWith('SET '))return {rows:[]};
+  assert.equal(authorized,true,'authorize before reading history or schema');
+  if(sql.includes('AS installed'))return {rows:[{installed}]};
+  if(sql.startsWith('SELECT id,sku'))return {rows:product?[{id,revision:'7'}]:[]};
+  if(sql.startsWith('SELECT group_id'))return {rows:cursor?[{group_id:gid}]:[]};
+  if(sql.startsWith('SELECT g.id'))return {rows};
+  if(sql.startsWith('SELECT id,reviewer_id'))return {rows:group?[{id:gid,member_count:2}]:[]};
+  if(sql.startsWith('SELECT i.*'))return {rows:[{group_id:gid,product_id:id,reviewed_revision:'7',audit_id:id,review_id:gid,product_snapshot:{id,revision:'7'}}]};
+  throw Error('Unexpected SQL: '+sql);
+ }};
+ const service=createResolutionHistoryService({transaction:fn=>fn(c),actor:async()=>{if(denied)throw Object.assign(Error('denied'),{status:403});authorized=true;}});
+ return {service,calls};
+}
+const status=n=>e=>e.status===n;
+test('history requires an active administrator before data reads',async()=>{const f=fixture({denied:true});await assert.rejects(f.service.list({},id),status(403));assert.ok(f.calls.every(c=>c.sql.startsWith('SET ')));});
+test('malformed product, resolution and cursor identifiers never reach SQL',async()=>{for(const invoke of [s=>s.list({},'bad'),s=>s.list({},id,[]),s=>s.detail({},'bad')]){const f=fixture();await assert.rejects(invoke(f.service),status(400));assert.equal(f.calls.length,0);}});
+test('missing schema fails closed',async()=>{await assert.rejects(fixture({installed:false}).service.list({},id),status(503));});
+test('missing product and group return 404',async()=>{await assert.rejects(fixture({product:false}).service.list({},id),status(404));await assert.rejects(fixture({group:false}).service.detail({},gid),status(404));});
+test('empty history does not fabricate resolutions or reversal support',async()=>{const result=await fixture().service.list({},id);assert.deepEqual(result.groups,[]);assert.equal(result.next_cursor,null);assert.equal(result.reversal_history_available,false);});
+test('history is bounded and supplies a stable keyset cursor',async()=>{const rows=Array.from({length:51},(_,n)=>({id:String(n),decision:'retain_primary'})),f=fixture({rows});const result=await f.service.list({},id);assert.equal(result.groups.length,50);assert.equal(result.next_cursor,'49');const q=f.calls.find(c=>c.sql.startsWith('SELECT g.id'));assert.deepEqual(q.args,[id,null]);assert.match(q.sql,/ORDER BY g.created_at DESC,g.id DESC LIMIT 51/);});
+test('cursor must belong to the selected product',async()=>{await assert.rejects(fixture({cursor:false}).service.list({},id,gid),status(400));});
+test('cursor is parameterized and never interpolated',async()=>{const f=fixture();await f.service.list({},id,gid);const q=f.calls.find(c=>c.sql.startsWith('SELECT g.id'));assert.deepEqual(q.args,[id,gid]);assert.ok(!q.sql.includes(gid));});
+test('detail exposes historical snapshots and exact linked evidence without writes',async()=>{const f=fixture(),result=await f.service.detail({},gid);assert.equal(result.items[0].reviewed_revision,'7');assert.equal(result.items[0].product_snapshot.revision,'7');assert.equal(result.group.id,gid);assert.equal(result.reversal_history_available,false);assert.equal(f.calls[0].sql,'SET TRANSACTION ISOLATION LEVEL REPEATABLE READ');assert.ok(f.calls.every(c=>/^(SET|SELECT) /.test(c.sql)));const q=f.calls.find(c=>c.sql.startsWith('SELECT i.*'));assert.match(q.sql,/a.id=i.audit_id/);assert.match(q.sql,/r.id=i.review_id/);});

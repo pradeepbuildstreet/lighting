@@ -8,5 +8,6 @@ export const dynamic='force-dynamic';
 export const metadata:Metadata={title:'Catalogue | Luminoza',robots:{index:false,follow:false}};
 export default function CataloguePage({searchParams}:{searchParams?:{workspace?:string;reference?:string;groups?:string;product?:string}}){
  if(searchParams?.workspace==='reference'||searchParams?.reference)redirect(referenceDataHref(searchParams.reference,searchParams.groups==='global'));
- return <AdminShell active="catalogue"><Suspense fallback={<p role="status">Loading catalogue…</p>}><CatalogueWorkspace/></Suspense></AdminShell>;
+ const historyHref='/admin/catalogue/resolutions'+(searchParams?.product?'?product='+encodeURIComponent(searchParams.product):'');
+ return <AdminShell active="catalogue"><p><a href={historyHref} target="_blank" rel="noreferrer">Read-only group resolution history (opens separately)</a></p><Suspense fallback={<p role="status">Loading catalogue…</p>}><CatalogueWorkspace/></Suspense></AdminShell>;
 }
