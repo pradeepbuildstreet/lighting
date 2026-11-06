@@ -4,6 +4,7 @@ import {PublicProductEnquiryCount} from './PublicEnquiryCounts';
 import {WishlistButton} from './WishlistButton';
 import {ProductShare} from './ProductShare';
 import {ProductPrice,ProductPricesProvider} from './ProductPrice';
+import {ProductTagTable} from './ProductTagTable';
 import Link from 'next/link';
 import {kindLabel,tagSpecRows} from '@/lib/catalogue-tag-presentation.mjs';
 import {categoryHref,formatPrice} from '@/lib/catalogue-client';
@@ -20,7 +21,7 @@ export function CatalogueProductDetails({product,adminPreview=false}:{product:Ca
  {!!product.categories.length&&<p className={styles.meta}>Categories: {product.categories.map((c,i)=><span key={c.id}>{i>0?', ':''}{adminPreview?c.name:<Link href={categoryHref(c.path)}>{c.name}</Link>}{c.primary?' (primary)':''}</span>)}</p>}
  <h2 className="text-xl font-semibold mt-6">Specifications</h2><dl className={styles.specs}>{specs.rows.map(r=><div key={r.key}><dt>{r.label}</dt><dd>{r.value}</dd></div>)}</dl>
  {!!specs.integrated.length&&<><h2 className="text-xl font-semibold">Integrated source specifications</h2><dl className={styles.specs}>{specs.integrated.map(r=><div key={r.key}><dt>{r.label}</dt><dd>{r.value}</dd></div>)}</dl></>}
- {product.tag_model&&product.tags_loaded&&[true,false].map(filter=>{const tags=(product.tags||[]).filter(t=>t.filter_attribute===filter);return tags.length?<section key={String(filter)}><h2 className="text-xl font-semibold mt-6">{filter?'Category filter attributes':'Additional information'}</h2><dl className={styles.specs}>{tags.map(t=><div key={t.id}><dt>{t.group_name}</dt><dd>{t.name}</dd></div>)}</dl></section>:null;})}
+ {product.tag_model&&product.tags_loaded&&<><ProductTagTable tags={product.tags} filterAttribute={true} title="Category filter attributes"/><ProductTagTable tags={product.tags} filterAttribute={false} title="Additional information"/></>}
  </div></div>
  {!adminPreview&&product.kind==='fixture'&&<ProductCompatibility key={product.id} fixtureId={product.id} mode={fixtureMode(product)}/>}
  {!adminPreview&&<Suspense fallback={<p role="status">Loading category products…</p>}><CategoryProductDiscovery productId={product.id}/></Suspense>}
