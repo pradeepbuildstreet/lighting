@@ -1,7 +1,7 @@
 "use strict";
 const {createHash}=require('node:crypto');
 const {splitEnquiry}=require('./enquiry-availability-core');
-const {roundOfferRupees}=require('./offer-pricing');
+const {quotePrice}=require('./enquiry-discount-pricing');
 const {storedQuantity}=require('./wishlist-quantity');
 function fail(status,message){throw Object.assign(Error(message),{status});}
 function availability(items){
@@ -14,7 +14,7 @@ async function load(client,token){
  const result=await client.query("SELECT id FROM wishlists WHERE share_token=$1 AND status<>'draft' FOR UPDATE",[token]);
  if(!result.rows.length)fail(404,'Submitted enquiry not found.');
  const id=result.rows[0].id;
- const {rows:items}=await client.query('SELECT product_id,sku,name,price,currency,media,product_href,catalogue_revision,image_url,category_slug,add_count AS quantity,available_quantity,availability_note FROM wishlist_items WHERE wishlist_id=$1 ORDER BY created_at,name',[id]);
+ const {rows:items}=await client.query('SELECT product_id,sku,name,price,default_discount_percent,discounted_price,currency,media,product_href,catalogue_revision,image_url,category_slug,add_count AS quantity,available_quantity,availability_note FROM wishlist_items WHERE wishlist_id=$1 ORDER BY created_at,name',[id]);
  const normalized=items.map(i=>({...i,quantity:storedQuantity(i.quantity??i.add_count)}));
  return {id,items:normalized,state:availability(normalized)};
 }
@@ -31,23 +31,8 @@ function priceQuote(items,state,body){
  if(!state.can_quote)fail(400,'No quantity is available. Save availability, but a quote cannot be created.');
  if(!Array.isArray(body.items)||body.items.length!==state.quoted.length)fail(400,'Supply one price for each available product only.');
  const prices=new Map();
- for(const row of body.items){
-  if(!row||typeof row.product_id!=='string')fail(400,'Invalid quotation product.');
-  const id=row.product_id.toLowerCase();let price;
-  try{price=roundOfferRupees(row.offer_price);}catch(_){fail(400,'Enter a valid non-negative offer price.');}
-  if(prices.has(id))fail(400,'Duplicate quotation product.');prices.set(id,price);
- }
- return state.quoted.map(item=>{
-  const price=prices.get(item.product_id);
-  if(price===undefined)fail(400,'Prices must match available products exactly.');
-  if(item.currency!=='INR')fail(409,'Only INR enquiries are supported.');
-  if(price>Number(item.price))fail(400,`Rounded offer price for ${item.sku} exceeds the enquiry price.`);
-  return {...item,list_price:Number(item.price),offer_price:price};
- });
+ for(const row of body.items){if(!row||typeof row.product_id!=='string')fail(400,'Invalid quotation product.');const id=row.product_id.toLowerCase();if(prices.has(id))fail(400,'Duplicate quotation product.');prices.set(id,row.offer_price);}
+ return state.quoted.map(item=>{if(!prices.has(item.product_id))fail(400,'Prices must match available products exactly.');if(item.currency!=='INR')fail(409,'Only INR enquiries are supported.');return {...item,list_price:Number(item.price),offer_price:quotePrice(item,prices.get(item.product_id))};});
 }
-function totals(items){
- const list=items.reduce((s,i)=>s+Math.round(Number(i.list_price)*100)*i.quantity,0);
- const offer=items.reduce((s,i)=>s+Math.round(Number(i.offer_price)*100)*i.quantity,0);
- return {list_total:list/100,offer_total:offer/100,savings:(list-offer)/100,discount_percent:list?Math.round((list-offer)/list*10000)/100:0};
-}
+function totals(items){const list=items.reduce((s,i)=>s+Math.round(Number(i.list_price)*100)*i.quantity,0),offer=items.reduce((s,i)=>s+Math.round(Number(i.offer_price)*100)*i.quantity,0);return {list_total:list/100,offer_total:offer/100,savings:(list-offer)/100,discount_percent:list?Math.round((list-offer)/list*10000)/100:0};}
 module.exports={availability,checkVersion,load,save,priceQuote,totals};
