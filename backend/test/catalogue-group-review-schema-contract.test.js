@@ -15,3 +15,9 @@ test('legacy approval still requires current subject evidence',()=>{for(const pa
 test('retained-primary approval is bound to the exact group item and audit',()=>{for(const part of ['i.group_id=r.group_resolution_id','i.audit_id=a.id AND i.review_id=r.id','i.reviewed_revision=rev',"d.decision='confirm_duplicate' AND d.duplicate_of_product_id=p.id"])assert.ok(sql.includes(part));});
 test('migration never changes live product decisions or activation',()=>{assert.doesNotMatch(sql,/UPDATE\s+(?:public\.)?products\b/i);assert.doesNotMatch(sql,/DELETE FROM\s+(?:public\.)?products\b/i);});
 test('committed product states must match recorded group outcomes',()=>{for(const part of ['p.revision<>i.reviewed_revision',"p.review_status<>'duplicate' OR p.is_active OR p.published",'p.approved_revision IS DISTINCT FROM i.reviewed_revision',"p.is_active IS DISTINCT FROM (i.product_snapshot->>'is_active')::boolean",'child.duplicate_of_product_id=i.product_id'])assert.ok(sql.includes(part));});
+test('production tag-algorithm safeguard applies before either decision branch',()=>{
+ const body=sql.split('CREATE OR REPLACE FUNCTION public.current_duplicate_approval(')[1].replace(/\s+/g,'');
+ const gate="AND(NOT(EXISTS(SELECT1FROMpublic.product_attributesWHEREproduct_id=p.id)OREXISTS(SELECT1FROMpublic.product_tagsWHEREproduct_id=p.id))ORa.algorithm_version='tags-evidence-v2')";
+ assert.ok(body.includes(gate),'Preserve the inspected production algorithm gate');
+ assert.ok(body.indexOf(gate)<body.indexOf("r.decision='approve_distinct'OR"),'The gate must cover distinct and retained-primary approval');
+});

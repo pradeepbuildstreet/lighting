@@ -155,6 +155,8 @@ CREATE OR REPLACE FUNCTION public.current_duplicate_approval(pid uuid,rev bigint
    AND p.review_status='approved' AND p.approved_revision=rev
    AND p.approved_by=reviewer AND p.duplicate_of_product_id IS NULL
    AND a.status='completed' AND a.product_revision=rev AND a.corpus_digest IS NOT NULL
+   AND (NOT (EXISTS(SELECT 1 FROM public.product_attributes WHERE product_id=p.id)
+    OR EXISTS(SELECT 1 FROM public.product_tags WHERE product_id=p.id)) OR a.algorithm_version='tags-evidence-v2')
    AND r.reviewer_id=reviewer AND (
     r.decision='approve_distinct' OR (r.decision='retain_primary' AND EXISTS(
      SELECT 1 FROM public.product_duplicate_group_items i

@@ -1,28 +1,30 @@
 # Catalogue group review - release integration
 
-## Status
-Partial implementation, source only. The worker now passes claimed leases to the previously committed audit-write guards, and claim SQL excludes confirmed duplicates. These source changes connect the two halves of worker protection, but real PostgreSQL locking and group-confirmation races remain release blockers. Migrations 13/14 are unapplied and not execution-validated. The UI is not TypeScript/build/browser verified. No completed feature or deployment is established.
+## Production database status
+On 2026-11-06, Supabase luminoza (baouokuhgbwltuwsvoji) successfully applied catalogue_group_review_and_terminal_protection, registered as version 20261106150248. The user explicitly waived a new backup. The combined approved transaction installed the schema logic from corrected migration 13 and migration 14 together, with additional production preflight, NOWAIT table locks and pre-commit preservation checks.
 
-## Worker integration
-Initial runs, automatic reviews and the single bounded evidence refresh each receive an immutable jobLease containing product ID/revision, actor, exact generation string and token. Unsafe numeric identities fail before service calls. The audit service verifies supplied ownership/status/expiry under the shared advisory locks, actor validation, product lock and job-row lock in the write transaction. Stale leases are not evidence-freshness errors and cannot start a refresh.
+Those checks passed: existing product revisions, review status, duplicate links, publication/activation state and approval-function results were unchanged; product/audit/review counts were unchanged; no group decisions were created. This establishes installation and that preservation check at commit, not functional group-save, permission, concurrency or rendered-UI verification.
 
-Claim SQL checks both terminal review status and duplicate_of_product_id and deliberately has no product-active filter. A duplicate link appearing after claim also blocks routing. Existing actor checks, held-recovery restrictions, complete-catalogue scan counts, retry bounds and generation/token acknowledgement guards remain. Explicit manual fresh audits keep their separate user-authorized interface; worker options are not accepted from public request bodies.
+Do not replay numbered scripts 13/14 on this production instance: their objects are already installed through the combined migration. The files remain schema-source definitions for new environments. The combined production transaction's exact SQL is recorded in Supabase migration history; this source update synchronizes the approval safeguard, not the complete preflight wrapper.
 
-## Group and database protections
-The source workflow supports mixed groups, direct retained targets, explicit decisions, comparison acknowledgements, notes, full summaries, stale-preview rejection, atomic group recording and exact-key retry recovery. Application publication binds retained-primary decisions to exact group evidence without activating products. Customer visibility retains all activity/dealer/eligibility checks.
+## Algorithm safeguard synchronization
+Migration 13 now preserves the pre-existing production condition requiring tags-evidence-v2 audits for products with product_attributes or product_tags. That common condition applies before either approve_distinct or retain_primary is accepted. Retained-primary approval additionally binds the exact group item, audit, review, revision, reviewer, corpus digest and algorithm and requires at least one recorded duplicate target. The earlier production transaction already contained this correction; this commit does not modify the database again.
 
-Read-only schema inspection found missing group tables and identity invalidation, scheduling and automatic reassessment gaps. Migration 14 addresses those gaps and depends on migration 13. Both are source drafts only and have not been applied. Ordinary writes must not serve as duplicate reversal; explicit audited reversal and read-only history are still pending.
+## Current implementation
+Group UI/API supports explicit mixed decisions, direct retained targets, comparison acknowledgements, notes, outside-candidate blocking, freshness checks, atomic recording and exact-request retry recovery. Retained activation is preserved; duplicates are disabled/unpublished. Application publication validates retained-primary evidence without weakening other gates. Worker initial runs, bounded refreshes and automatic approvals supply immutable claimed leases to transaction-level guards. Claim/post-claim checks exclude duplicate status and links while permitting legitimate inactive products. Database terminal guards and automatic reassessment support are installed.
 
-## Verification boundaries
-This step passed 26 isolated Node.js checks in a temporary harness: eight existing worker cases, eleven worker-routing cases from the stale-audit fixture, and seven new binding/source cases (24 mocked behavioural cases plus two source checks overall). The complete updated stale-audit file passed a syntax check; its six VM-based audit-service cases were not rerun in this step. Earlier work separately exercised 13 audit-write lease cases. These are not live database, real expiry/lock timing, concurrent-worker/group-write, HTTP authorization, full-project, rendered UI, build or deployment tests.
+Repository source is not proof that the web application or worker processes are running that version. Frontend TypeScript/build/browser verification, end-to-end group saves, real permissions and worker races remain pending. Explicit audited reversal and read-only resolution-history functionality are not yet implemented.
 
-## Remaining before release enablement
-- Run complete worker/audit suites and real two-worker versus group-confirmation races, including lost acknowledgements, expiry during lock waits, generation replacement and transaction rollback.
-- Execute migrations 13/14 on disposable PostgreSQL with positive/negative, ordering, trigger and permission tests; verify editor/import/media/reference/pricing paths against the guards and inspect deployment-schema compatibility.
-- Add explicit audited reversal and read-only resolution history.
-- Type-check/build the frontend and test rendered selection, comparisons, mixed outcomes, outside scope, navigation, stale previews, timeout/reload/retry and receipts.
-- Run full project and HTTP authorization regressions; drain old workers during a separately reviewed rollout.
-- Apply migrations, deploy and make live decisions only under separate exact-action approvals.
+## Verification record
+Preparation previously exercised isolated policy, audit, publication, worker and UI-helper cases with the limitations documented in their commits. This synchronization passed 15 migration source-contract checks, including the new common algorithm-gate regression. Source-text checks are not runtime trigger tests. The production installation did not exercise synthetic group fixtures or concurrent workers, and no application deployment was performed as part of the database migration.
 
-## Focused worker commands
-node --test backend/test/catalogue-duplicate-worker.test.js backend/test/catalogue-worker-binding.test.js backend/test/catalogue-worker-lease.test.js backend/services/catalogue-stale-audit.test.js
+## Remaining work
+- Verify production objects/permissions and installed definitions using a separately approved read-only postflight; do not infer runtime grants from successful DDL alone.
+- Prepare separately approved rollback-only synthetic database cases for all-distinct groups, multiple clusters, stale revisions, incomplete groups, bad targets, unauthorized actors and terminal duplicate writes. Do not use real product decisions as test fixtures.
+- Verify application/worker deployment, run complete regression suites and real two-worker/group-confirmation races, including expiry during lock waits and lost acknowledgements.
+- Type-check/build the frontend and test rendered group review, outside scope, dirty navigation, stale previews, timeout/reload/retry and receipts.
+- Implement explicit audited reversal and read-only resolution history while preserving original decisions.
+- Review and approve any further source writes, production fixes, deployments or live group decisions individually.
+
+## Focused schema-source check
+node --test backend/test/catalogue-group-review-schema-contract.test.js
