@@ -1,0 +1,58 @@
+name: Catalogue PostgreSQL lease verification
+on:
+  push:
+    branches: [release, main]
+  pull_request:
+    branches: [release, main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: catalogue-lease-postgres-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  lease-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: catalogue
+          POSTGRES_PASSWORD: disposable-ci-only
+          POSTGRES_DB: catalogue_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U catalogue -d catalogue_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        shell: bash
+        working-directory: backend
+    env:
+      TEST_DATABASE_URL: postgresql://catalogue:disposable-ci-only@127.0.0.1:5432/catalogue_test
+      CATALOGUE_TEST_DATABASE_DISPOSABLE: '1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install locked backend dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Test lease SQL with independent PostgreSQL connections
+        run: node --test integration/catalogue-worker-lease-postgres.test.js 2>&1 | tee lease-postgres.log
+      - name: Retain actual PostgreSQL test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: catalogue-lease-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+          path: backend/lease-postgres.log
+          if-no-files-found: warn
+          retention-days: 7

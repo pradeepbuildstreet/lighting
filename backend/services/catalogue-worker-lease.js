@@ -11,10 +11,18 @@ async function assertWorkerLease(c,actor,product,lease){
   ||!UUID.test(lease.lease_token)||!/^[1-9][0-9]{0,18}$/.test(generation)
   ||(typeof lease.generation==='number'&&!Number.isSafeInteger(lease.generation))
   ||BigInt(generation)>9223372036854775807n)lost();
+ // The materialized locked row is emitted only after FOR UPDATE has acquired it.
+ // Recheck wall-clock expiry on that output, including time spent waiting for its lock.
  const row=(await c.query(`SELECT product_id FROM public.catalogue_duplicate_jobs
-  WHERE product_id=$1::uuid AND product_revision=$2::bigint AND actor_id=$3::uuid
-   AND generation=$4::bigint AND lease_token=$5::uuid AND status='processing'
-   AND lease_until>clock_timestamp() FOR UPDATE`,[product.id,String(product.revision),actor.id,generation,lease.lease_token])).rows[0];
+  WHERE product_id=$1::uuid AND EXISTS (
+   WITH locked AS MATERIALIZED (
+    SELECT product_id,lease_until FROM public.catalogue_duplicate_jobs
+    WHERE product_id=$1::uuid AND product_revision=$2::bigint AND actor_id=$3::uuid
+     AND generation=$4::bigint AND lease_token=$5::uuid AND status='processing'
+     AND lease_until>clock_timestamp() FOR UPDATE
+   )
+   SELECT 1 FROM locked WHERE lease_until>clock_timestamp()
+  )`,[product.id,String(product.revision),actor.id,generation,lease.lease_token])).rows[0];
  if(!row||row.product_id!==product.id)lost();
 }
 module.exports={LEASE_ERROR,assertWorkerLease};
