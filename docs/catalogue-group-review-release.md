@@ -1,26 +1,24 @@
 # Catalogue group review - release integration
 
 ## Status
-Partial implementation, source only. Policy, audit-service exclusions, migration 13, group preview/confirmation API and application retained-primary publication validation are supplied. Migration 13 is not applied or PostgreSQL-validated. Group UI, full duplicate-terminal protection and end-to-end verification remain pending. This is not a completed feature or deployment.
+Partial implementation, source only. Policy, audit-service exclusions, migration 13, atomic group API, application retained-primary publication validation and group-review UI draft are supplied. Migration 13 is not applied or PostgreSQL-validated. The UI is not TypeScript/build/browser verified. Duplicate-terminal protection and release verification remain pending. This is not a completed or deployed feature.
 
-## Current source behaviour
-Group API endpoints are POST /duplicates/groups/preview and POST /duplicates/groups/confirm under the existing admin-protected catalogue router. Groups accept 2 to 50 explicit products within the existing complete-catalogue 1000-record scan limit. Mixed clusters and distinct products are supported. Every member needs a decision. Outside-group candidates, stale evidence, newer manual reviews and invalid targets block submission. Reviewer-bound request keys support identical retries without new writes.
+## Review UI
+The independent duplicate-review workspace now has Single product review and Group review modes. Group mode uses the shared product browser (including approved/inactive retained targets) and existing image comparison. Select 2 to 50 products, load a preview, include outside candidates and refresh as necessary, assign every product retain or duplicate, select direct retained targets, acknowledge comparison for every member and enter notes. No product is approved by default. The full confirmation summary identifies products and targets; retained activation remains unchanged and duplicates are disabled/unpublished.
 
-Confirmation records the group, new audits/candidates, individual reviews and item snapshots together. It preserves retained activation, disables/unpublishes duplicates, invalidates job generations and checks deferred group constraints. Historical audits are not rewritten. The full-catalogue snapshot/count semantics remain unchanged.
+Scope changes require discarding existing decisions/notes. Busy and dirty state feed the shared navigation guard. Preview membership and returned decision outcomes are checked. Confirmation saves its exact body and request key in session storage before sending. After an uncertain response the UI locks editing and offers only exact-request retry or explicitly warned local recovery-data discard. Reloading group mode restores valid saved recovery data. Discarding local recovery is not a reversal of a recorded decision. Session storage must be available before a confirmation can be sent.
 
-Application publication now accepts retain_primary only after exact group/product/revision/audit/review/reviewer/digest/algorithm binding and a positive current_duplicate_approval database check. A retained-primary label alone, a missing group prerequisite or any non-boolean approval result fails closed. All existing price, current approval, audit, model, category and image checks remain. Ordinary distinct reviews and unpublication remain compatible with pre-group schemas.
-
-Publication and activation stay separate. This change does not activate products. Existing customer visibility still requires active status, an active dealer and all other eligibility/view checks. Legacy inactivity expectations and a missing active-dealer flag in a visibility test fixture are corrected; the visibility implementation is unchanged.
+The existing catch-all API forwarder passes the authenticated group routes; no new proxy route is added. Migration prerequisites still fail closed. Group API scope, full-catalogue freshness/count semantics, idempotent retries and application publication binding remain as implemented in earlier commits. Publication does not activate products; customer visibility still requires activity, active dealer and all other eligibility rules.
 
 ## Verification boundaries
-Earlier preparation passed 19 policy cases, 31 mocked audit-service cases, 14 migration source-contract checks and 18 mocked group-service cases. This step passed 77 focused tests: 35 group-publication, 17 existing publication and 25 tag-publication/visibility cases, in a temporary harness with mocked SQL/actor calls, equivalent required validator helpers, the actual visibility implementation and stubbed unused compatibility-warning integration. These are not live PostgreSQL, SQL/trigger execution, full-project, HTTP authorization, concurrency, browser, build or deployment verification.
+Earlier steps passed 19 policy, 31 mocked audit-service, 14 migration-text, 18 mocked group-service and 77 focused publication/visibility cases in their preparation harnesses. This UI step passed 21 Node.js checks: 16 executable decision/recovery helper cases and five source-wiring checks. These are not React rendering or interaction tests. No TypeScript compiler was available in the preparation environment; TSX compilation, type checking, Next production build and browser verification have not been performed. No PostgreSQL execution, HTTP authorization or concurrency verification is established for the complete feature.
 
 ## Remaining before release enablement
-- Run migration 13 positive/negative/rollback and permission tests on a disposable PostgreSQL database; check against the actual deployed schema. Do not apply it live based on source-text checks.
-- Implement the group-review UI with selection/comparison, per-product dispositions, retained targets, notes, complete confirmation summary, dirty/busy guards, stale-preview recovery and stable retry keys.
-- Finish scheduler/worker claim/recovery exclusions and prevent editor/import/readiness paths from implicitly reopening duplicates. Add explicit audited reversal and read-only resolution history.
-- Run complete regressions, HTTP/admin authorization, real database, worker-race, TypeScript/build and rendered-browser tests.
-- Apply migrations, deploy and make live product decisions only under their own reviewed approvals.
+- Run migration 13 positive/negative/rollback/permission tests on disposable PostgreSQL and check the actual deployment schema before any live application.
+- Type-check and build the frontend; test rendered selection, comparison, mixed decisions, outside-candidate handling, dirty navigation, stale previews, timeout/reload recovery, identical retry and result receipts.
+- Finish scheduler/worker claim/recovery exclusions and guard editor/import/readiness paths against implicit duplicate reopening. Add explicit audited reversal and read-only group-resolution history.
+- Run complete project, HTTP/admin authorization, real database and worker-race regressions.
+- Apply migrations, deploy and make live product decisions only under separate reviewed approvals.
 
-## Focused publication tests
-node --test backend/test/catalogue-group-publication.test.js backend/test/catalogue-publication.test.js backend/test/catalogue-tag-publication-app.test.js
+## Focused UI helper/source checks
+node --test frontend/app/admin/catalogue/group-review-state.test.mjs

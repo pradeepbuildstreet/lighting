@@ -1,0 +1,10 @@
+export type GroupProduct={id:string;sku:string;name:string;revision:number|string;model_number?:string|null;review_status?:string;duplicate_of_product_id?:string|null;is_active?:boolean};
+export type GroupChoice={disposition:''|'retain'|'duplicate';duplicate_of_product_id:string};
+export type GroupPreview={products:GroupProduct[];product_ids:string[];comparisons:Record<string,any>[];preview_token:string;outside_product_ids:string[];can_confirm:boolean};
+export type GroupBody={readonly product_ids:readonly string[];readonly preview_token:string;readonly request_key:string;readonly notes:string;readonly decisions:readonly {readonly product_id:string;readonly revision:string;readonly disposition:'retain'|'duplicate';readonly duplicate_of_product_id:string|null}[]};
+export type PendingGroupRequest={body:GroupBody;products:GroupProduct[]};
+export function eligibleGroupProduct(p:unknown):boolean;
+export function groupError(products:GroupProduct[],choices:Record<string,GroupChoice>,examined:Record<string,boolean>,notes:string):string;
+export function groupPayload(preview:GroupPreview,choices:Record<string,GroupChoice>,examined:Record<string,boolean>,notes:string,requestKey:string):GroupBody;
+export function groupSummary(products:GroupProduct[],body:GroupBody):string;
+export function restoreGroupRequest(text:string):PendingGroupRequest|null;
