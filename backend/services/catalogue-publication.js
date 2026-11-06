@@ -7,7 +7,7 @@ function corpusDigest(rows){return crypto.createHash('sha256').update(JSON.strin
 function blockers(product,facts){
  const reasons=[];
  if(product.selling_price===null||product.selling_price===undefined||!Number.isFinite(Number(product.selling_price))||Number(product.selling_price)<0)reasons.push('Valid public selling price required');
- if(product.review_status!=='approved'||String(product.approved_revision)!==String(product.revision)||!product.approved_by)reasons.push('Current distinct approval required');
+ if(product.review_status!=='approved'||String(product.approved_revision)!==String(product.revision)||!product.approved_by)reasons.push(facts.review?.decision==='retain_primary'?'Current retained-primary approval required':'Current distinct approval required');
  if(product.duplicate_of_product_id)reasons.push('Duplicate products cannot be published');
  if(!facts.primaryCategory)reasons.push('Active primary category required');
  if(!facts.primaryImage)reasons.push('Primary image required');
@@ -18,10 +18,29 @@ function blockers(product,facts){
  const a=facts.audit,r=facts.review;
  if(!a||a.status!=='completed'||String(a.product_revision)!==String(product.revision))reasons.push('Latest completed audit must match the current revision');
  if(a?.algorithm_version!=='tags-evidence-v2')reasons.push('Current tags-evidence-v2 audit required');
- if(!r||r.decision!=='approve_distinct'||r.reviewer_id!==product.approved_by)reasons.push('Latest audit review must approve this product as distinct');
+ const retained=r?.decision==='retain_primary'&&!!r.group_resolution_id&&facts.groupApproval===true;
+ if(!r||!(r.decision==='approve_distinct'||retained)||r.reviewer_id!==product.approved_by)reasons.push(r?.decision==='retain_primary'?'Latest retained-primary review requires validated group evidence':'Latest audit review must approve this product as distinct');
  // Corpus freshness is checked before review, not forever after completed approval.
  if(!a?.corpus_digest)reasons.push('Completed audit evidence required');
  return reasons;
+}
+async function retainedPrimaryApproval(c,product,audit,review){
+ if(review?.decision!=='retain_primary'||!review.group_resolution_id||!review.id||!audit?.id
+  ||review.audit_id!==audit.id||review.reviewer_id!==product.approved_by)return false;
+ const installed=(await c.query("SELECT to_regclass('public.product_duplicate_groups') IS NOT NULL AND to_regclass('public.product_duplicate_group_items') IS NOT NULL AND position('subject-revision-and-group-v2' IN pg_get_functiondef(to_regprocedure('public.current_duplicate_approval(uuid,bigint,uuid,text)')))>0 AS group_approval_installed")).rows[0]?.group_approval_installed;
+ if(installed!==true)return false;
+ const result=await c.query(`SELECT EXISTS(
+  SELECT 1 FROM public.product_duplicate_group_items i
+  JOIN public.product_duplicate_groups g ON g.id=i.group_id
+  WHERE i.group_id=$1::uuid AND i.product_id=$2::uuid AND i.reviewed_revision=$3::bigint
+   AND i.audit_id=$4::uuid AND i.review_id=$5::uuid AND i.decision='retain_primary'
+   AND i.duplicate_of_product_id IS NULL AND g.reviewer_id=$6::uuid
+   AND g.corpus_digest=$7::text AND g.algorithm_version=$8::text
+   AND EXISTS(SELECT 1 FROM public.product_duplicate_group_items d
+    WHERE d.group_id=g.id AND d.decision='confirm_duplicate' AND d.duplicate_of_product_id=i.product_id)
+   AND public.current_duplicate_approval($2::uuid,$3::bigint,$6::uuid,$9::text)
+ ) AS group_approved`,[review.group_resolution_id,product.id,String(product.revision),audit.id,review.id,product.approved_by,audit.corpus_digest,audit.algorithm_version,product.product_kind]);
+ return result.rows[0]?.group_approved===true;
 }
 function createPublicationService(db){
  async function inspect(c,id,locked=false){
@@ -37,7 +56,8 @@ function createPublicationService(db){
   if(tagModel&&product.model_prerequisite===true&&product.model_activated===true)activeSpecType=(await c.query('SELECT public.catalogue_product_model_ready($1::uuid,$2::text) AS ready',[id,product.product_kind])).rows[0]?.ready===true;
   const audit=(await c.query('SELECT * FROM product_duplicate_audits WHERE product_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[id])).rows[0];
   const review=audit?(await c.query('SELECT * FROM product_duplicate_reviews WHERE audit_id=$1 ORDER BY created_at DESC,id DESC LIMIT 1',[audit.id])).rows[0]:null;
-  const facts={primaryCategory,primaryImage,activeSpecType,audit,review,tagModel,modelPrerequisite:product.model_prerequisite===true,modelActivated:product.model_activated===true};
+  const groupApproval=await retainedPrimaryApproval(c,product,audit,review);
+  const facts={primaryCategory,primaryImage,activeSpecType,audit,review,groupApproval,tagModel,modelPrerequisite:product.model_prerequisite===true,modelActivated:product.model_activated===true};
   const reasons=blockers(product,facts);
   return {product,reasons,can_publish:reasons.length===0,product_model:{tag_model:tagModel,prerequisite_installed:facts.modelPrerequisite,activated:facts.modelActivated,eligible:activeSpecType}};
  }

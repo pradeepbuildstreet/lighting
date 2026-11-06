@@ -11,7 +11,8 @@ const writes=f=>f.calls.some(([s])=>s.startsWith('UPDATE products')),helper=f=>f
 test('eligible tag model',()=>A.deepEqual(blockers(p,facts),[]));
 for(const key of ['tagModel','modelPrerequisite','modelActivated','activeSpecType'])test('blocks absent '+key,()=>A.ok(blockers(p,{...facts,[key]:false}).length));
 test('old algorithm blocked',()=>A.ok(blockers(p,{...facts,audit:{...audit,algorithm_version:'old'}}).length));
-for(const [k,v] of [['is_active',false],['selling_price',null],['approved_revision',1],['duplicate_of_product_id',id]])test('preserves '+k,()=>A.ok(blockers({...p,[k]:v},facts).length));
+for(const [k,v] of [['selling_price',null],['approved_revision',1],['duplicate_of_product_id',id]])test('preserves '+k,()=>A.ok(blockers({...p,[k]:v},facts).length));
+test('inactive publication readiness does not implicitly activate a product',async()=>{A.deepEqual(blockers({...p,is_active:false},facts),[]);const f=fixture({is_active:false});const r=await f.service.set({id},id,2,true);A.equal(r.product.is_active,false);});
 test('completed approval stable after corpus changes',()=>A.deepEqual(blockers(p,{...facts,digest:'changed'}),[]));
 test('tag publish uses shared rule, not legacy specs',async()=>{const f=fixture();A.equal((await f.service.set({id},id,2,true)).product.published,true);A.ok(helper(f));A.ok(!f.calls.some(([s])=>/fixture_specs|light_specs|fixture_types|light_types/.test(s)));});
 for(const key of ['model_prerequisite','model_activated'])test('missing '+key+' prevents helper and writes',async()=>{const f=fixture({[key]:false});await A.rejects(f.service.set({id},id,2,true),e=>e.status===409);A.ok(!helper(f)&&!writes(f));});
@@ -19,7 +20,7 @@ test('failed model rule prevents writes',async()=>{const f=fixture({},false);awa
 test('unpublish bypasses prerequisites',async()=>{const f=fixture({model_prerequisite:false,model_activated:false});A.equal((await f.service.set({id},id,2,false)).product.published,false);A.ok(!helper(f)&&!f.calls.some(([s])=>s.includes('to_regprocedure')));});
 test('missing tag attributes cannot use legacy fixture fallback',async()=>{const f=fixture({product_kind:'fixture',tag_model:false,model_prerequisite:true,model_activated:true});await A.rejects(f.service.set({id},id,2,true),e=>e.status===409&&/tag-model/.test(e.message));A.ok(!helper(f)&&!writes(f));A.ok(!f.calls.some(([s])=>/fixture_specs|light_specs|fixture_types|light_types/.test(s)));});
 test('lock order matches writer',async()=>{const f=fixture();await f.service.set({id},id,2,true);A.match(f.calls[0][0],/8102401/);A.match(f.calls[1][0],/8102403/);});
-const row={id,active_ok:true,published_ok:true,review_ok:true,revision_ok:true,not_duplicate_ok:true,price_ok:true,duplicate_approval_ok:true,primary_category_ok:true,primary_image_ok:true,product_type_spec_ok:true,category_tree_ok:true,in_public_view:true};
+const row={id,active_ok:true,published_ok:true,active_dealer_ok:true,review_ok:true,revision_ok:true,not_duplicate_ok:true,price_ok:true,duplicate_approval_ok:true,primary_category_ok:true,primary_image_ok:true,product_type_spec_ok:true,category_tree_ok:true,in_public_view:true};
 test('tag visibility fails closed without prerequisites',()=>{const s=statusFromRow({...row,tag_model:true});A.equal(s.visible,false);A.equal(s.reasons.length,2);A.ok(!s.reasons.some(x=>x.includes('fixture/light')));});
 test('public view is still required',()=>A.equal(statusFromRow({...row,tag_model:true,model_prerequisite:true,model_activated:true,in_public_view:false}).visible,false));
 test('view cannot override invalid approval',()=>A.equal(statusFromRow({...row,duplicate_approval_ok:false}).visible,false));

@@ -5,7 +5,7 @@ const id='11111111-1111-1111-1111-111111111111';
 const product={id,product_kind:'light',revision:2,is_active:true,selling_price:'0.00',review_status:'approved',approved_revision:2,approved_by:id,duplicate_of_product_id:null,published:false};
 const facts={tagModel:true,modelPrerequisite:true,modelActivated:true,primaryCategory:true,primaryImage:true,activeSpecType:true,audit:{status:'completed',product_revision:2,corpus_digest:'digest',algorithm_version:'tags-evidence-v2'},review:{decision:'approve_distinct',reviewer_id:id},digest:'digest'};
 test('current approval and zero price accepted',()=>assert.deepEqual(blockers(product,facts),[]));
-test('inactive product blocked',()=>assert.ok(blockers({...product,is_active:false},facts).includes('Product must be active')));
+test('inactivity does not reset publication readiness or activate the product',()=>assert.deepEqual(blockers({...product,is_active:false},facts),[]));
 test('missing price blocked',()=>assert.ok(blockers({...product,selling_price:null},facts).some(x=>x.includes('selling price'))));
 test('negative price blocked',()=>assert.ok(blockers({...product,selling_price:-1},facts).some(x=>x.includes('selling price'))));
 test('old approved revision blocked',()=>assert.ok(blockers({...product,approved_revision:1},facts).some(x=>x.includes('distinct approval'))));
