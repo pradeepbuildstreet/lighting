@@ -1,29 +1,35 @@
 # Catalogue group review - release integration
 
 ## Status
-First implementation step only. The policy and its isolated tests are prepared; no runtime API, UI, worker or database integration is included in this step. This feature must not be described as complete or enabled.
+Partial implementation only. The mixed-decision policy is committed. This step adds existing audit-service exclusions and regression tests; it does not add group persistence, group API or group UI. The complete group-review feature is not enabled or verified.
 
 ## Decision contract
-A group can contain all-distinct products, one retained primary with multiple duplicates, or multiple retained primaries with their own duplicates plus distinct products. Final confirmation requires one explicit disposition for every product. Unresolved products block final submission; they are never default-approved. The server derives retain_primary only for retained records targeted by another group member. Other retained products receive approve_distinct; duplicate records receive confirm_duplicate and a direct retained target.
+Support all-distinct groups, one retained primary with several duplicates, and multiple retained primaries with their own duplicates plus distinct products. Require one explicit disposition per product before final confirmation; unresolved products never receive implicit approval. Derive retain_primary only for retained records targeted by another group member. Other retained records receive approve_distinct; duplicates receive confirm_duplicate with a direct retained target. Retained activation stays manual. Do not merge or delete original records.
 
-Confirmed duplicates are inactive and unpublished. Retained-product activation remains manual. This action does not merge or delete records or move dealer records, images, enquiries or quotations. Normal publication readiness remains mandatory.
+## Implemented in source
+- Mixed-group policy and its 19 previously tested isolated cases.
+- Existing audit run/review entry points reject confirmed duplicates and duplicate-linked subjects before any status reset or review insertion.
+- New candidate scoring excludes confirmed duplicates and duplicate-linked records. Inactivity alone remains eligible.
+- Review queue excludes duplicate-linked records; its existing status filter already excludes duplicate status.
+- Existing single-product confirmation now requests deactivation as well as unpublication and records the deactivation in the audit log.
+- When the jobs table is installed, confirmation holds that product's job, increments its generation and clears its lease, preventing old acknowledgements from matching it.
+- Historical audit detail remains unchanged. Existing single-product targets still require active non-duplicate candidates; inactive retained targets require the future group endpoint.
 
-## Completed preparation
-- Mixed-group decision validation and duplicate eligibility policy.
-- Nineteen isolated Node.js policy tests passed in the preparation environment.
-- Self-links, cycles, chains, outside-group targets, missing decisions, repeated decisions and stale revisions are rejected.
-- Confirmed duplicate status OR a duplicate target excludes a record; inactivity alone does not.
+## Snapshot and verification boundaries
+The full-catalogue snapshot, digest format, synchronous 1000-record limit, scanned_count meaning and worker recovery counts are intentionally unchanged in this step. Duplicate rows are inspected for snapshot freshness but are not compared as new candidates. This preserves current completeness checks; it is not an eligible-only corpus optimisation.
 
-## Required before enabling
-- Add a migration for linked group resolutions, individual decisions and retained-primary evidence. Update review constraints and current_duplicate_approval without weakening existing publication guards. Do not submit retain_primary to the existing single-product endpoint.
-- Build the authenticated, authorized group preview and atomic confirmation API. Revalidate complete current evidence, revisions, candidate coverage and reviewer eligibility under the existing lock order. Recheck the group server-side; client-provided membership and revisions are not sufficient evidence. Unresolved candidates outside the reviewed scope must block approval, not silently become distinct.
-- Persist group identity, reviewer, notes, reviewed evidence and individual outcomes in one transaction. Handle retries idempotently and reject stale submissions without partial writes. Retained targets may be inactive. Protect existing incoming duplicate links from becoming chains if a former primary is later resolved elsewhere.
-- Exclude confirmed duplicates consistently from queue membership, manual audit subjects, candidate scans, background scheduling, worker claims, recovery paths and clean-audit scan counts. Revalidate job generations so stale workers cannot undo a group resolution.
-- Version evidence scopes as necessary; never rewrite historical audits as though they had reviewed new evidence. Protect confirmed duplicates from implicit reopening through editor saves, imports, automatic readiness or reruns. Reversal must be explicit and audited. Preserve historical evidence and provide read-only resolution history.
-- Add group comparison UI, explicit dispositions and targets, notes, complete confirmation summary, busy/dirty guards and stale-state handling. Do not present a retained primary as distinct from its known duplicates.
-- Add transactional integration, database guard, worker-race, eligibility parity, publication, HTTP authorization and UI tests. Run project suites, TypeScript/build and rendered-browser checks.
-- Apply database changes and deploy only under their own reviewed approvals. No live product decisions or database changes are authorized by the source-code preparation commit.
+Thirty-one isolated Node.js tests passed using mocked database calls and the required validation/policy helper logic in a temporary harness. They are not live PostgreSQL, trigger, worker-race, HTTP, browser, production-build or deployment tests. A source commit does not establish deployment. No database migration or live product decision is included.
 
-## Isolated verification
-Run: node --test backend/test/catalogue-group-review-policy.test.js
-This validates only the pure policy. It does not demonstrate that production review cycles exclude duplicates or that group review is available in the UI.
+## Required before enabling group review
+- Add linked group-resolution persistence and retained-primary review evidence. Update database constraints, current_duplicate_approval and application publication checks without weakening other gates. Never send retain_primary to the existing single-product endpoint.
+- Add authorized preview and atomic confirmation APIs with server-validated membership, full candidate coverage, current evidence/revisions, reviewer eligibility and existing lock order. Block approval for unresolved outside-group candidates. Persist group identity, notes, evidence and individual outcomes together; handle retries idempotently and stale submissions without partial writes.
+- Permit inactive retained targets without activating them. Protect existing incoming duplicate links from becoming chains when a former primary is resolved elsewhere.
+- Apply terminal exclusion consistently to scheduler/worker claims and recovery, not just service rejection. Protect duplicate decisions from implicit reopening through editor saves, imports and readiness reassessment; reversal must be explicit and audited. Expose read-only resolution history.
+- If moving to an eligible-only corpus, version evidence scope and change scan counts and recovery checks together. Never rewrite historical audits as if they reviewed new evidence.
+- Add group comparison UI, dispositions/targets, notes, complete confirmation summary, dirty/busy guards and stale-state handling.
+- Run project regression suites, live-database rollback/constraint checks, worker-race and authorization tests, TypeScript/build and rendered-browser verification.
+- Apply migrations and deploy only under separate reviewed approvals.
+
+## Focused test commands
+node --test backend/test/catalogue-group-review-policy.test.js
+node --test backend/test/catalogue-tag-audit-integration.test.js
