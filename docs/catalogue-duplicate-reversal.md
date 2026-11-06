@@ -1,0 +1,13 @@
+# Audited duplicate reversal foundation
+
+Migration 15 is source only until separately reviewed and applied. Never replay production migrations 13/14. The API returns unavailable until its prerequisite is installed. No product backfill is included.
+
+POST /api/admin/catalogue/products/:id/duplicate-reversal requires expected_revision, expected_review_id, expected_group_resolution_id (explicit null for an individual-only review), expected_target_product_id, request_key and reason. The originating active administrator is revalidated. Repeat an uncertain request identically; never replace its key. An identical replay returns the original event without changing later product state.
+
+The security-definer database operation locks in catalogue order, checks the latest originating audit/review and current revision/target, consumes a private transaction-bound capability, and appends an immutable event with original audit/review and before/after snapshots. Ordinary reopening and retargeting remain blocked. The original group and individual review records are not edited.
+
+The reopened product gets a new revision, stays inactive/unpublished, loses approvals, and has its job generation invalidated and held pending explicit fresh review. If its former primary still has the exact current retained-primary approval from that same group, that approval is invalidated too, with a new revision and held job; the primary keeps its activation state and is unpublished. A newer unrelated approval is not intentionally replaced. Incoming duplicate links are never moved automatically: reverse them individually before attempting to replace their primary.
+
+GET /api/admin/catalogue/products/:id/duplicate-reversals provides authorized reads of the latest 100 events and an explicit has_more flag. Group-history screen integration and an administrator reversal form remain pending; the existing screen still labels reversal unavailable. Do not deploy this foundation as a completed rendered workflow.
+
+The rollback packet uses only synthetic inactive SKU-less products and a synthetic administrator. It covers ordinary-write protection, stale revision/review checks, missing actor, successful individual reversal, exact replay, changed-key-content conflict, event immutability, grants and deferred constraint execution. It does not cover retained-group primary invalidation, all group cases or real concurrency. The packet has not been executed. Node tests added here are mocked and source-contract tests, not PostgreSQL functional tests. Full CI/build/browser, production installation and worker concurrency verification remain pending.
