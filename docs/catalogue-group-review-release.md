@@ -1,35 +1,32 @@
 # Catalogue group review - release integration
 
 ## Status
-Partial implementation only. The mixed-decision policy is committed. This step adds existing audit-service exclusions and regression tests; it does not add group persistence, group API or group UI. The complete group-review feature is not enabled or verified.
+Partial implementation. Decision policy and existing audit-service exclusion are committed. Migration 13 now supplies group persistence and database retained-primary approval support as source only. It has not been applied or validated by PostgreSQL. Group API/UI and application publication support remain pending; this is not an enabled feature or deployment.
 
 ## Decision contract
-Support all-distinct groups, one retained primary with several duplicates, and multiple retained primaries with their own duplicates plus distinct products. Require one explicit disposition per product before final confirmation; unresolved products never receive implicit approval. Derive retain_primary only for retained records targeted by another group member. Other retained records receive approve_distinct; duplicates receive confirm_duplicate with a direct retained target. Retained activation stays manual. Do not merge or delete original records.
+Support all distinct, one retained primary with several duplicates, and multiple duplicate clusters plus distinct products. Require explicit decisions for every member. Derive retained-primary labels from incoming duplicate targets; reject self-links, chains, cycles and outside-group targets. Keep retained activation unchanged. Disable and unpublish duplicates without merging or deleting their records.
 
-## Implemented in source
-- Mixed-group policy and its 19 previously tested isolated cases.
-- Existing audit run/review entry points reject confirmed duplicates and duplicate-linked subjects before any status reset or review insertion.
-- New candidate scoring excludes confirmed duplicates and duplicate-linked records. Inactivity alone remains eligible.
-- Review queue excludes duplicate-linked records; its existing status filter already excludes duplicate status.
-- Existing single-product confirmation now requests deactivation as well as unpublication and records the deactivation in the audit log.
-- When the jobs table is installed, confirmation holds that product's job, increments its generation and clears its lease, preventing old acknowledgements from matching it.
-- Historical audit detail remains unchanged. Existing single-product targets still require active non-duplicate candidates; inactive retained targets require the future group endpoint.
+## Source implementation
+- Mixed-group validation policy with 19 previously tested isolated cases.
+- Audit-service subject/review guards, candidate and queue exclusion, duplicate deactivation and job-generation invalidation. Thirty-one isolated tests previously passed with mocked database calls and helper logic.
+- Migration 13 adds group headers, linked per-product decisions, reviewer-bound request keys/digests and reviewed snapshots. It adds a group link and retained-primary decision to individual reviews.
+- Deferred checks require all members and individual reviews, matching audit/reviewer/revision/evidence, direct primary targets, correct current product states and preserved retained activation. Existing incoming duplicate links must be explicitly reassigned before replacing their primary.
+- New group history and linked individual reviews reject updates/deletes. New tables enable RLS and revoke browser-role privileges. Deferred checks require the originating active administrator.
+- Database approval retains existing subject/revision/latest-audit/reviewer checks and permits retained-primary evidence only through its exact group item with an actual duplicate target.
+- Historical audits are not rewritten. Existing full-catalogue snapshot/count semantics and the 1000-record limit remain unchanged. Inactive legitimate records remain eligible.
 
-## Snapshot and verification boundaries
-The full-catalogue snapshot, digest format, synchronous 1000-record limit, scanned_count meaning and worker recovery counts are intentionally unchanged in this step. Duplicate rows are inspected for snapshot freshness but are not compared as new candidates. This preserves current completeness checks; it is not an eligible-only corpus optimisation.
+## Verification limits
+Fourteen source-contract tests passed for the migration text. No PostgreSQL parser or execution validation was available in the preparation environment. These checks do not prove SQL/PLpgSQL validity, rollback behaviour, constraint timing, permissions, concurrency or compatibility with the actual deployed schema. Migration 13 requires disposable-database execution and negative-case tests before any live application. Do not apply this to production on the strength of source checks alone.
 
-Thirty-one isolated Node.js tests passed using mocked database calls and the required validation/policy helper logic in a temporary harness. They are not live PostgreSQL, trigger, worker-race, HTTP, browser, production-build or deployment tests. A source commit does not establish deployment. No database migration or live product decision is included.
+## Remaining before enabling
+- Implement authorized preview and atomic group confirmation with server-validated scope, full candidate coverage, evidence/revision freshness, notes, lock order, idempotent retries and no partial writes. Use new per-product audits/reviews bound to the shared reviewed corpus digest. Preserve retained activation, disable duplicates, and invalidate affected jobs.
+- Update application publication/readiness checks for validated retained-primary evidence. The existing application still rejects that review decision; database support alone must not be treated as enablement.
+- Add explicit audited reversal; ordinary editor/import/readiness paths must not implicitly reopen confirmed duplicates. Add read-only resolution history. Finish scheduler/worker claim and recovery filtering.
+- Add group comparison UI, dispositions/targets, confirmation summary, notes, dirty/busy protection and stale-state handling.
+- Run PostgreSQL positive/negative/rollback tests, project regressions, HTTP authorization, worker-race tests, TypeScript/build and browser checks.
+- Apply migrations and deploy only under separate reviewed approvals. No live product records are changed by committing this migration file.
 
-## Required before enabling group review
-- Add linked group-resolution persistence and retained-primary review evidence. Update database constraints, current_duplicate_approval and application publication checks without weakening other gates. Never send retain_primary to the existing single-product endpoint.
-- Add authorized preview and atomic confirmation APIs with server-validated membership, full candidate coverage, current evidence/revisions, reviewer eligibility and existing lock order. Block approval for unresolved outside-group candidates. Persist group identity, notes, evidence and individual outcomes together; handle retries idempotently and stale submissions without partial writes.
-- Permit inactive retained targets without activating them. Protect existing incoming duplicate links from becoming chains when a former primary is resolved elsewhere.
-- Apply terminal exclusion consistently to scheduler/worker claims and recovery, not just service rejection. Protect duplicate decisions from implicit reopening through editor saves, imports and readiness reassessment; reversal must be explicit and audited. Expose read-only resolution history.
-- If moving to an eligible-only corpus, version evidence scope and change scan counts and recovery checks together. Never rewrite historical audits as if they reviewed new evidence.
-- Add group comparison UI, dispositions/targets, notes, complete confirmation summary, dirty/busy guards and stale-state handling.
-- Run project regression suites, live-database rollback/constraint checks, worker-race and authorization tests, TypeScript/build and rendered-browser verification.
-- Apply migrations and deploy only under separate reviewed approvals.
-
-## Focused test commands
+## Focused checks
 node --test backend/test/catalogue-group-review-policy.test.js
 node --test backend/test/catalogue-tag-audit-integration.test.js
+node --test backend/test/catalogue-group-review-schema-contract.test.js
