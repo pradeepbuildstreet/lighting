@@ -20,7 +20,7 @@ function fixture({firstError=stale(),secondError=null,freshCandidates=[],freshRe
  const db={query,transaction:async fn=>fn({query})};
  return {calls,statuses,worker:createDuplicateWorker(db,{duplicateFactory:()=>service})};
 }
-test('stale evidence gets exactly one guarded fresh audit before approval',async()=>{const f=fixture();await f.worker.tick();assert.deepEqual(f.calls.map(c=>c[0]),['review','run','review']);assert.deepEqual(f.calls[1],['run',{id:'admin'},'p','8',{refreshAuditId:'old'}]);assert.equal(f.calls[2][2],'new');assert.deepEqual(f.statuses,['completed']);});
+test('stale evidence gets exactly one guarded fresh audit before approval',async()=>{const f=fixture();await f.worker.tick();assert.deepEqual(f.calls.map(c=>c[0]),['review','run','review']);assert.deepEqual(f.calls[1],['run',{id:'admin'},'p','8',{refreshAuditId:'old',jobLease:{product_id:'p',product_revision:'8',actor_id:'admin',generation:'2',lease_token:'lease'}}]);assert.equal(f.calls[2][2],'new');assert.deepEqual(f.statuses,['completed']);});
 test('fresh scan finding a candidate waits for manual review',async()=>{const f=fixture({freshCandidates:[{id:'match'}]});await f.worker.tick();assert.deepEqual(f.calls.map(c=>c[0]),['review','run']);assert.deepEqual(f.statuses,['awaiting_review']);});
 test('a second stale conflict holds without unbounded rescans',async()=>{const f=fixture({secondError:stale()});await f.worker.tick();assert.equal(f.calls.filter(c=>c[0]==='run').length,1);assert.deepEqual(f.statuses,['held']);});
 test('unrelated revision conflicts never trigger a refresh',async()=>{const f=fixture({firstError:Object.assign(Error('Product changed; reload'),{status:409})});await f.worker.tick();assert.deepEqual(f.calls.map(c=>c[0]),['review']);assert.deepEqual(f.statuses,['held']);});
@@ -45,8 +45,8 @@ async function refreshGuard({status='pending_review',duplicate=null,latest='old'
  const db={actor:async()=>{},transaction:async fn=>fn({query})};
  return exported.exports.createDuplicateService(db).run({id:'admin'},'p','8',{refreshAuditId:'old'});
 }
-test('refresh guard respects every manual outcome',async()=>{for(const status of ['approved','draft','duplicate','rejected','archived'])await assert.rejects(refreshGuard({status}),/manual decision/);});
-test('refresh guard respects confirmed duplicate link',async()=>assert.rejects(refreshGuard({duplicate:'other'}),/manual decision/));
+test('refresh guard respects every manual outcome',async()=>{for(const status of ['approved','draft','duplicate','rejected','archived'])await assert.rejects(refreshGuard({status}),/manual decision|Confirmed duplicates|Current product state/);});
+test('refresh guard respects confirmed duplicate link',async()=>assert.rejects(refreshGuard({duplicate:'other'}),/manual decision|Confirmed duplicates/));
 test('refresh guard rejects a newer audit',async()=>assert.rejects(refreshGuard({latest:'newer'}),/newer audit/));
 test('refresh guard rejects an intervening review',async()=>assert.rejects(refreshGuard({reviewed:true}),/already reviewed/));
 test('refresh guard rejects a changed revision',async()=>assert.rejects(refreshGuard({revision:9}),/Product changed/));

@@ -1,5 +1,9 @@
 "use strict";
 const {FRESHNESS_ERROR,canResumeFreshAudit}=require('./catalogue-audit-recovery-policy');
+function leaseFor(job){
+ for(const value of [job.product_revision,job.generation])if(typeof value==='number'&&!Number.isSafeInteger(value))throw Object.assign(new Error('Exact numeric worker job identity required'),{status:409,code:'DUPLICATE_JOB_LEASE_LOST'});
+ return Object.freeze({product_id:job.product_id,product_revision:String(job.product_revision),actor_id:job.actor_id,generation:String(job.generation),lease_token:job.lease_token});
+}
 function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}={}){
  let stopped=false,running=null,timer=null;
  const scoped={...db,transaction:fn=>db.transaction(async c=>{await c.query("SET LOCAL lock_timeout='3s'");await c.query("SET LOCAL statement_timeout='30s'");return fn(c);})};
@@ -19,10 +23,10 @@ function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}
   if(result.reviews.length){await finish(job,'awaiting_review',null,auditId);return;}
   if(result.candidates.length){await finish(job,'awaiting_review',null,auditId);return;}
   try{
-   await service.review({id:job.actor_id},auditId,'approve_distinct',null,null,{automated:true});
+   await service.review({id:job.actor_id},auditId,'approve_distinct',null,null,{automated:true,jobLease:leaseFor(job)});
   }catch(e){
    if(!canRefresh||e.status!==409||e.message!=='Catalogue evidence changed; rerun the audit')throw e;
-   const fresh=await service.run({id:job.actor_id},job.product_id,String(job.product_revision),{refreshAuditId:auditId});
+   const fresh=await service.run({id:job.actor_id},job.product_id,String(job.product_revision),{refreshAuditId:auditId,jobLease:leaseFor(job)});
    log({event:'duplicate_stale_audit_refreshed',product_id:job.product_id,previous_audit_id:auditId,audit_id:fresh.audit.id});
    await routeAudit(job,fresh.audit.id,autoApprove,false);
    return;
@@ -77,19 +81,22 @@ function createDuplicateWorker(db,{duplicateFactory,intervalMs=10000,log=()=>{}}
   if(configuration.auto_approve_clean_audits===true)await resumeFreshHeldAudits();
   await db.query("UPDATE public.catalogue_duplicate_jobs SET status='failed',last_error='Lease expired after maximum attempts; administrator recheck required',lease_until=NULL,lease_token=NULL,updated_at=now() WHERE status='processing' AND lease_until<now() AND attempts>=5");
   const job=await db.transaction(async c=>(await c.query(`WITH due AS (
-   SELECT product_id FROM public.catalogue_duplicate_jobs
-   WHERE attempts<5 AND actor_id IS NOT NULL AND run_after<=now() AND (status='pending' OR (status='processing' AND lease_until<now()))
-   AND (lease_until IS NULL OR lease_until<now()) ORDER BY run_after,product_id FOR UPDATE SKIP LOCKED LIMIT 1
+   SELECT q.product_id FROM public.catalogue_duplicate_jobs q
+   WHERE q.attempts<5 AND q.actor_id IS NOT NULL AND q.run_after<=now() AND (q.status='pending' OR (q.status='processing' AND q.lease_until<now()))
+   AND (q.lease_until IS NULL OR q.lease_until<now())
+   AND EXISTS(SELECT 1 FROM public.products p WHERE p.id=q.product_id
+    AND p.review_status NOT IN ('duplicate','rejected','archived') AND p.duplicate_of_product_id IS NULL)
+   ORDER BY q.run_after,q.product_id FOR UPDATE OF q SKIP LOCKED LIMIT 1
   ) UPDATE public.catalogue_duplicate_jobs j SET status='processing',attempts=j.attempts+1,
    lease_until=now()+interval '5 minutes',lease_token=gen_random_uuid(),updated_at=now()
    FROM due WHERE j.product_id=due.product_id RETURNING j.*`)).rows[0]);
   if(!job)return;
   try{
-   const current=(await db.query(`SELECT p.revision,p.review_status,a.id AS audit_id,a.status AS audit_status,a.product_revision,a.algorithm_version,a.corpus_digest
+   const current=(await db.query(`SELECT p.revision,p.review_status,p.duplicate_of_product_id,a.id AS audit_id,a.status AS audit_status,a.product_revision,a.algorithm_version,a.corpus_digest
     FROM public.products p LEFT JOIN LATERAL(SELECT * FROM public.product_duplicate_audits WHERE product_id=p.id ORDER BY created_at DESC,id DESC LIMIT 1)a ON true WHERE p.id=$1`,[job.product_id])).rows[0];
-   if(!current||['duplicate','rejected','archived'].includes(current.review_status)){await finish(job,'held','Current product state does not permit automatic auditing.');return;}
+   if(!current||current.duplicate_of_product_id||['duplicate','rejected','archived'].includes(current.review_status)){await finish(job,'held','Current product state does not permit automatic auditing.');return;}
    if(current.audit_status==='completed'&&String(current.product_revision)===String(current.revision)&&String(current.revision)===String(job.product_revision)&&current.algorithm_version==='tags-evidence-v2'&&current.corpus_digest){await routeAudit(job,current.audit_id,configuration.auto_approve_clean_audits);return;}
-   const result=await service.run({id:job.actor_id},job.product_id,String(job.product_revision));
+   const result=await service.run({id:job.actor_id},job.product_id,String(job.product_revision),{jobLease:leaseFor(job)});
    await routeAudit(job,result.audit.id,configuration.auto_approve_clean_audits);
    log({event:'duplicate_job_completed',product_id:job.product_id});
   }catch(e){
