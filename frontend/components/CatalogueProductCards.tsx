@@ -1,5 +1,6 @@
 import {EnquiryCountsProvider,PublicEnquiryCount} from './PublicEnquiryCounts';
 import {WishlistButton} from './WishlistButton';
+import {ProductShare} from './ProductShare';
 import Link from 'next/link';
 import {kindLabel} from '@/lib/catalogue-tag-presentation.mjs';
 import {productHref,formatPrice} from '@/lib/catalogue-client';
@@ -24,6 +25,7 @@ function EnquiryCountProductCards({products,browseCategory,returnTo,maxRows}:{pr
      <div className={card.footer}><span className={card.view}>View product</span><div className={card.enquiries}><PublicEnquiryCount productId={p.id}/></div></div>
     </div>
    </Link>
+   <ProductShare productId={p.id} name={p.name} compact />
    <div className="product-result-wishlist flex items-start"><WishlistButton productId={p.id} sku={p.sku} name={p.name} compact /></div>
   </article>;
  })}</div>;

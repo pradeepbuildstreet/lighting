@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import styles from './ProductShare.module.css';
+import compactStyles from './ProductShareCompact.module.css';
 
-export function ProductShare({ productId, name }: { productId: string; name: string }) {
+export function ProductShare({ productId, name, compact = false }: { productId: string; name: string; compact?: boolean }) {
   const [status, setStatus] = useState('');
   const [fallbackUrl, setFallbackUrl] = useState('');
   const [busy, setBusy] = useState(false);
@@ -44,16 +45,15 @@ export function ProductShare({ productId, name }: { productId: string; name: str
     window.open('https://wa.me/?text=' + encodeURIComponent(text), '_blank', 'noopener,noreferrer');
   }
 
-  return <section className={styles.root} aria-label="Share this product with friends">
-    <div className={styles.actions}>
-      <button type="button" onClick={() => void share()} disabled={busy}>
+  return <section className={compact ? `${styles.root} ${compactStyles.root}` : styles.root} aria-label="Share this product with friends">
+    <div className={compact ? `${styles.actions} ${compactStyles.actions}` : styles.actions}>
+      <button type="button" onClick={() => void share()} disabled={busy} aria-label={compact ? 'Share ' + name : undefined} title={compact ? 'Share product' : undefined} aria-busy={busy}>
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4"/></svg>
-        {busy ? 'Opening share…' : 'Share product'}
+        {!compact && (busy ? 'Opening share…' : 'Share product')}
       </button>
-      <button type="button" onClick={whatsapp}>WhatsApp</button>
-      <button type="button" onClick={() => void copyLink()}>Copy link</button>
+      {!compact && <><button type="button" onClick={whatsapp}>WhatsApp</button><button type="button" onClick={() => void copyLink()}>Copy link</button></>}
     </div>
-    <p className={styles.status} role="status" aria-live="polite">{status}</p>
-    {fallbackUrl && <label className={styles.fallback}>Product link<input readOnly value={fallbackUrl} onFocus={event => event.currentTarget.select()} onClick={event => event.currentTarget.select()}/></label>}
+    <p className={compact ? `${styles.status} ${compactStyles.status}` : styles.status} role="status" aria-live="polite">{status}</p>
+    {fallbackUrl && <label className={compact ? `${styles.fallback} ${compactStyles.fallback}` : styles.fallback}>Product link<input readOnly value={fallbackUrl} onFocus={event => event.currentTarget.select()} onClick={event => event.currentTarget.select()}/></label>}
   </section>;
 }
