@@ -1,9 +1,10 @@
 import {EnquiryCountsProvider,PublicEnquiryCount} from './PublicEnquiryCounts';
 import {WishlistButton} from './WishlistButton';
 import {ProductShare} from './ProductShare';
+import {ProductPrice,ProductPricesProvider} from './ProductPrice';
 import Link from 'next/link';
 import {kindLabel} from '@/lib/catalogue-tag-presentation.mjs';
-import {productHref,formatPrice} from '@/lib/catalogue-client';
+import {productHref} from '@/lib/catalogue-client';
 import {browseProductHref} from '@/lib/catalogue-browse-context.mjs';
 import {brandLabel} from '@/lib/catalogue-card-display.mjs';
 import type {CatalogueProduct} from '@/lib/catalogue-types';
@@ -22,7 +23,7 @@ function EnquiryCountProductCards({products,browseCategory,returnTo,maxRows}:{pr
      <h2 className={card.title} title={p.name}>{p.name}</h2>
      <p className={card.identity} title={identity}>{identity}</p>
      <p className={card.brand} title={brand==='—'?'Brand not specified':`Brand: ${brand}`}>Brand: {brand}</p>
-     <p className={card.price}>{formatPrice(p.price,p.currency)}</p>
+     <div className={card.price}><ProductPrice productId={p.id} compact/></div>
      <div className={card.footer}><span className={card.view}>View product</span><div className={card.enquiries}><PublicEnquiryCount productId={p.id}/></div></div>
     </div>
    </Link>
@@ -32,4 +33,4 @@ function EnquiryCountProductCards({products,browseCategory,returnTo,maxRows}:{pr
  })}</div>;
  return maxRows===3?<div className={grid.cap}>{cards}</div>:cards;
 }
-export function CatalogueProductCards(props:Parameters<typeof EnquiryCountProductCards>[0]){const products=props.maxRows===3?props.products.slice(0,18):props.products;return <EnquiryCountsProvider productIds={products.map(p=>p.id)}><EnquiryCountProductCards {...props} products={products}/></EnquiryCountsProvider>;}
+export function CatalogueProductCards(props:Parameters<typeof EnquiryCountProductCards>[0]){const products=props.maxRows===3?props.products.slice(0,18):props.products;return <ProductPricesProvider productIds={products.map(p=>p.id)}><EnquiryCountsProvider productIds={products.map(p=>p.id)}><EnquiryCountProductCards {...props} products={products}/></EnquiryCountsProvider></ProductPricesProvider>;}
