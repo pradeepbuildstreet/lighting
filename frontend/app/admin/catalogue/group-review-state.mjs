@@ -4,32 +4,17 @@ export function groupError(products,choices,examined,notes){
  if(!Array.isArray(products)||products.length<2||products.length>50)return 'Select between 2 and 50 products.';
  if(new Set(products.map(p=>p.id)).size!==products.length||products.some(p=>!eligibleGroupProduct(p)))return 'The selection contains an ineligible or repeated product. Refresh it.';
  if(typeof notes!=='string'||!notes.trim()||notes.trim().length>5000)return 'Enter review notes (up to 5000 characters).';
- for(const p of products){const c=choices[p.id];
-  if(!c||!['retain','duplicate'].includes(c.disposition))return 'Choose a decision for every product; nothing is approved by default.';
-  if(!/^[1-9][0-9]*$/.test(String(p.revision)))return 'A current product revision is required.';
-  if(examined[p.id]!==true)return 'Confirm comparison of every product and its suggestions.';
-  if(c.disposition==='duplicate'&&(c.duplicate_of_product_id===p.id||!products.some(t=>t.id===c.duplicate_of_product_id)||choices[c.duplicate_of_product_id]?.disposition!=='retain'))return 'Every duplicate must point directly to a different retained product in this group.';
- }
+ for(const p of products){const c=choices[p.id];if(!c||!['retain','duplicate'].includes(c.disposition))return 'Choose a decision for every product; nothing is approved by default.';if(!/^[1-9][0-9]*$/.test(String(p.revision)))return 'A current product revision is required.';if(examined[p.id]!==true)return 'Confirm comparison of every product and its suggestions.';if(c.disposition==='duplicate'&&(c.duplicate_of_product_id===p.id||!products.some(t=>t.id===c.duplicate_of_product_id)||choices[c.duplicate_of_product_id]?.disposition!=='retain'))return 'Every duplicate must point directly to a different retained product in this group.';}
  return '';
 }
-export function groupPayload(preview,choices,examined,notes,requestKey){
+export function groupPayload(preview,choices,examined,notes,requestKey,reviewAgain=false){
+ if(preview.already_resolved===true&&reviewAgain!==true)throw Error('Already resolved as distinct. Choose Review again / change resolution before recording a new decision.');
  const reason=groupError(preview.products,choices,examined,notes);if(reason)throw Error(reason);
  if(preview.can_confirm!==true||preview.outside_product_ids?.length)throw Error('Include or resolve every outside-group candidate before confirming.');
  if(!/^[a-f0-9]{64}$/.test(preview.preview_token)||!UUID.test(requestKey))throw Error('Reload the preview before confirming.');
  const decisions=preview.products.map(p=>Object.freeze({product_id:p.id,revision:String(p.revision),disposition:choices[p.id].disposition,duplicate_of_product_id:choices[p.id].disposition==='duplicate'?choices[p.id].duplicate_of_product_id:null}));
- return Object.freeze({product_ids:Object.freeze(preview.products.map(p=>p.id)),preview_token:preview.preview_token,request_key:requestKey,notes:notes.trim(),decisions:Object.freeze(decisions)});
+ return Object.freeze({product_ids:Object.freeze(preview.products.map(p=>p.id)),preview_token:preview.preview_token,request_key:requestKey,notes:notes.trim(),decisions:Object.freeze(decisions),...(reviewAgain===true?{review_again:true}:{})});
 }
 const label=p=>(p.sku||'SKU pending')+' — '+(p.name||'Unnamed product')+' ['+p.id+']';
-export function groupSummary(products,body){
- const targets=new Set(body.decisions.filter(d=>d.disposition==='duplicate').map(d=>d.duplicate_of_product_id));
- return body.decisions.map(d=>{const p=products.find(p=>p.id===d.product_id)||{id:d.product_id};return d.disposition==='duplicate'?label(p)+' → duplicate of '+label(products.find(p=>p.id===d.duplicate_of_product_id)||{id:d.duplicate_of_product_id})+'; deactivate and unpublish':label(p)+(targets.has(d.product_id)?' → retain as primary':' → approve as distinct')+'; activation unchanged';}).join('\n');
-}
-export function restoreGroupRequest(text){
- try{const pending=JSON.parse(text),b=pending.body,p=pending.products;
-  if(!b||Object.keys(b).some(k=>!['product_ids','preview_token','request_key','notes','decisions'].includes(k))||!Array.isArray(p)||p.some(x=>!x||typeof x.sku!=='string'||typeof x.name!=='string')||!Array.isArray(b.decisions)||b.decisions.length!==p.length||!Array.isArray(b.product_ids)||b.product_ids.length!==p.length)return null;
-  const choices={},examined={};for(const d of b.decisions){if(!d||choices[d.product_id])return null;choices[d.product_id]={disposition:d.disposition,duplicate_of_product_id:d.duplicate_of_product_id||''};examined[d.product_id]=true;}
-  if(new Set(b.product_ids).size!==p.length||p.some(x=>!b.product_ids.includes(x.id)||!b.decisions.some(d=>d.product_id===x.id&&String(d.revision)===String(x.revision))))return null;
-  groupPayload({products:p,can_confirm:true,outside_product_ids:[],preview_token:b.preview_token},choices,examined,b.notes,b.request_key);
-  return pending;
- }catch{return null;}
-}
+export function groupSummary(products,body){const targets=new Set(body.decisions.filter(d=>d.disposition==='duplicate').map(d=>d.duplicate_of_product_id));return body.decisions.map(d=>{const p=products.find(p=>p.id===d.product_id)||{id:d.product_id};return d.disposition==='duplicate'?label(p)+' → duplicate of '+label(products.find(p=>p.id===d.duplicate_of_product_id)||{id:d.duplicate_of_product_id})+'; deactivate and unpublish':label(p)+(targets.has(d.product_id)?' → retain as primary':' → approve as distinct')+'; activation unchanged';}).join('\n');}
+export function restoreGroupRequest(text){try{const pending=JSON.parse(text),b=pending.body,p=pending.products;if(!b||Object.keys(b).some(k=>!['product_ids','preview_token','request_key','notes','decisions','review_again'].includes(k))||(b.review_again!==undefined&&b.review_again!==true)||!Array.isArray(p)||p.some(x=>!x||typeof x.sku!=='string'||typeof x.name!=='string')||!Array.isArray(b.decisions)||b.decisions.length!==p.length||!Array.isArray(b.product_ids)||b.product_ids.length!==p.length)return null;const choices={},examined={};for(const d of b.decisions){if(!d||choices[d.product_id])return null;choices[d.product_id]={disposition:d.disposition,duplicate_of_product_id:d.duplicate_of_product_id||''};examined[d.product_id]=true;}if(new Set(b.product_ids).size!==p.length||p.some(x=>!b.product_ids.includes(x.id)||!b.decisions.some(d=>d.product_id===x.id&&String(d.revision)===String(x.revision))))return null;groupPayload({products:p,can_confirm:true,outside_product_ids:[],preview_token:b.preview_token},choices,examined,b.notes,b.request_key,b.review_again===true);return pending;}catch{return null;}}

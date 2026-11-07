@@ -1,0 +1,11 @@
+# Current distinct approvals are resolved by default
+
+The catalogue policy is now: selecting products with valid current explicit distinct approvals opens their saved resolution, regardless of shared group membership. No count of 93 is hardcoded. The backend verifies the current_duplicate_approval function, current product/audit revisions, reviewer, algorithm, completed audit and latest approve_distinct decision. Mere approved status, retained-primary evidence, a stale audit, missing evidence or a new unapproved product does not establish global distinctness. Existing group-specific retained relationships remain supported separately.
+
+The group UI automatically requests a read-only preview after selection changes. If every selected product has verified current distinct evidence it displays Already resolved as distinct with the existing individual review identities, reviewers, time and notes. It hides mandatory new decisions/notes/acknowledgements and save controls until Review again / change resolution is selected. Viewing does not create audits, resolutions, approvals, publication or activation changes. A fresh preview is required when frontend/backend versions do not match.
+
+An optional new review requires explicit review_again=true, new notes and per-product choices/acknowledgements; the backend checks this intent after identical-request recovery and before inserts. Old request bodies omit the field entirely, preserving their existing request digests and exact-key retry behaviour. Recovery preserves the flag for new requests. Existing uncertain requests are never regenerated.
+
+This uses existing schema and approval functions; no migration or product-state backfill is included. Existing hosting/build hooks may run after the release push. The previous shared-group-only restriction is no longer the general distinct baseline. Raw single-product audit history and worker rules remain unchanged.
+
+Preparation: 16 isolated server-policy tests and six payload/recovery tests passed, including all 4278 pairs in a synthetic 93-product current-approval baseline. The server harness used the copied existing fingerprint implementation and mocked SQL, not production database execution. Full backend regressions, TypeScript/Next build, SQL execution and rendered-browser acceptance remain unverified for this patch.

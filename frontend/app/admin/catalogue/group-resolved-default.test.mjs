@@ -1,0 +1,12 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {groupPayload,restoreGroupRequest} from './group-review-state.mjs';
+const ids=Array.from({length:3},(_,i)=>'00000000-0000-4000-8000-'+String(i+1).padStart(12,'0'));
+const products=ids.slice(0,2).map((id,i)=>({id,sku:'TEST'+i,name:'Synthetic '+i,revision:'7',review_status:'approved'})),preview={products,can_confirm:true,outside_product_ids:[],preview_token:'a'.repeat(64),already_resolved:true};
+const choices=Object.fromEntries(products.map(p=>[p.id,{disposition:'retain'}])),examined=Object.fromEntries(products.map(p=>[p.id,true]));
+test('resolved inspection cannot create a payload implicitly',()=>assert.throws(()=>groupPayload(preview,choices,examined,'Notes',ids[2]),/Already resolved/));
+test('read-only resolved state requires no notes or acknowledgements',()=>assert.throws(()=>groupPayload(preview,{}, {},'',ids[2]),/Already resolved/));
+test('explicit re-review binds intent and retains exact recovery payload',()=>{const body=groupPayload(preview,choices,examined,'New decision reason',ids[2],true),saved={body,products};assert.equal(body.review_again,true);assert.deepEqual(restoreGroupRequest(JSON.stringify(saved)),saved);});
+test('old pending payloads retain their original shape and key',()=>{const body=groupPayload({...preview,already_resolved:false},choices,examined,'Old reason',ids[2]),saved={body,products};assert.ok(!Object.hasOwn(body,'review_again'));assert.deepEqual(restoreGroupRequest(JSON.stringify(saved)),saved);assert.equal(restoreGroupRequest(JSON.stringify(saved)).body.request_key,ids[2]);});
+test('non-boolean recovery flags cannot authorize a new review',()=>{const body=groupPayload(preview,choices,examined,'Reason',ids[2],true);for(const review_again of [false,'true',1,null])assert.equal(restoreGroupRequest(JSON.stringify({body:{...body,review_again},products})),null);});
+test('opt-in still requires notes, every acknowledgement and complete outside scope',()=>{assert.throws(()=>groupPayload(preview,choices,examined,'',ids[2],true));assert.throws(()=>groupPayload(preview,choices,{},'Reason',ids[2],true));assert.throws(()=>groupPayload({...preview,outside_product_ids:[ids[2]],can_confirm:false},choices,examined,'Reason',ids[2],true));});
