@@ -1,6 +1,7 @@
 "use strict";
 const crypto=require('node:crypto'),V=require('../validators/catalogue');
 const G=require('./catalogue-group-review-policy'),P=require('./catalogue-duplicate-model');
+const R=require('./catalogue-resolved-pairs');
 const MAX_API_MEMBERS=50;
 function fail(status,message){throw Object.assign(new Error(message),{status});}
 function canonical(v){if(v instanceof Date)return v.toISOString();if(Array.isArray(v))return v.map(canonical);if(v&&typeof v==='object')return Object.fromEntries(Object.keys(v).sort().map(k=>[k,canonical(v[k])]));return v;}
@@ -39,20 +40,14 @@ function createGroupReviewService(db,{tagScoring}={}){
    LEFT JOIN LATERAL(SELECT id FROM product_duplicate_audits WHERE product_id=p.id ORDER BY created_at DESC,id DESC LIMIT 1)a ON true
    LEFT JOIN LATERAL(SELECT id FROM product_duplicate_reviews WHERE audit_id=a.id ORDER BY created_at DESC,id DESC LIMIT 1)r ON true
    WHERE p.id=ANY($1::uuid[]) ORDER BY p.id`,[selected])).rows;
-  const corpus_digest=P.tagDigest(records),comparisons=[],outside=new Set(),chosen=new Set(selected);
-  for(const subject of members)for(const candidate of records){
-   if(subject.id===candidate.id||!G.eligibleForDuplicateReview(candidate))continue;
-   const result=scoring().compare(subject,candidate);
-   if(!result||result.overall_score<35)continue;
-   comparisons.push({...result,product_id:subject.id,candidate_product_id:candidate.id});
-   if(!chosen.has(candidate.id))outside.add(candidate.id);
-  }
-  const preview_token=hash({format:'group-review-preview-v1',corpus_digest,selected,comparisons,heads:heads.sort((a,b)=>a.product_id.localeCompare(b.product_id)),members:members.map(p=>({id:p.id,review_status:p.review_status,approved_revision:p.approved_revision??null,approved_by:p.approved_by??null,approved_at:p.approved_at??null,published:p.published,selling_price:p.selling_price,currency:p.currency}))});
-  return {records,members,comparisons,corpus_digest,preview_token,outside_product_ids:[...outside].sort()};
+  const corpus_digest=P.tagDigest(records),book=await R.loadResolvedPairs(c,records);
+  const {comparisons,outside_product_ids,resolved_comparisons}=R.partitionComparisons(records,members,(a,b)=>scoring().compare(a,b),book,G.eligibleForDuplicateReview);
+  const preview_token=hash({format:'group-review-preview-v2-resolved-pairs',corpus_digest,selected,comparisons,resolved_comparisons,heads:heads.sort((a,b)=>a.product_id.localeCompare(b.product_id)),members:members.map(p=>({id:p.id,review_status:p.review_status,approved_revision:p.approved_revision??null,approved_by:p.approved_by??null,approved_at:p.approved_at??null,published:p.published,selling_price:p.selling_price,currency:p.currency}))});
+  return {records,members,comparisons,corpus_digest,preview_token,outside_product_ids,resolved_comparisons};
  }
  async function preview(actor,body){keys(body,['product_ids']);const selected=ids(body.product_ids);return db.transaction(async c=>{
   await begin(c,actor);const s=await snapshot(c,selected);
-  return {product_ids:selected,products:s.members,comparisons:s.comparisons,preview_token:s.preview_token,outside_product_ids:s.outside_product_ids,can_confirm:s.outside_product_ids.length===0};
+  return {product_ids:selected,products:s.members,comparisons:s.comparisons,preview_token:s.preview_token,outside_product_ids:s.outside_product_ids,can_confirm:s.outside_product_ids.length===0,resolved_comparisons:s.resolved_comparisons.slice(0,200),resolved_comparison_count:s.resolved_comparisons.length};
  });}
  async function result(c,group,replayed){return {group_resolution_id:group.id,replayed,decisions:(await c.query('SELECT product_id,reviewed_revision,decision,duplicate_of_product_id,audit_id,review_id FROM product_duplicate_group_items WHERE group_id=$1 ORDER BY product_id',[group.id])).rows};}
  async function confirm(actor,body){
