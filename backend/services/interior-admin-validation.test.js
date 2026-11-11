@@ -1,0 +1,11 @@
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { validate, products, imageType } = require('../api/interior-admin');
+const key = '11111111-1111-4111-8111-111111111111';
+const project = () => ({ name: 'Example project', slug: 'example-project', developer_name: '', locality: '', city: 'Chennai', description: '', relationship: 'independent', published: false, sort_order: 0 });
+test('validate project draft and reject unknown fields', () => { assert.equal(validate('projects', project()).published, false); assert.throws(() => validate('projects', { ...project(), seo_title: 'deferred' })); assert.throws(() => validate('projects', { ...project(), published: 'false' })); assert.throws(() => validate('projects', { ...project(), slug: 'Bad Slug' })); });
+test('updates require a positive revision', () => { assert.throws(() => validate('projects', project(), true)); assert.equal(validate('projects', { ...project(), revision: '3' }, true).revision, '3'); });
+test('layout area and type validated', () => { const p = { name: 'Type B', slug: 'type-b', property_type: '3bhk', project_id: key, area_sqft: '1500.25', notes: '', floor_plan_public: false, published: false, sort_order: 0 }; assert.equal(validate('layouts', p).area_sqft, '1500.25'); for (const area_sqft of [-1, 0, 'NaN', '1.123']) assert.throws(() => validate('layouts', { ...p, area_sqft })); assert.throws(() => validate('layouts', { ...p, property_type: 'other' })); });
+test('product count is distinct, quantities and room labels validated', () => { const p = { product_id: key, quantity: 3, room_labels: ['Living room','Living room'], selected_by_default: true }; assert.deepEqual(products([p])[0].room_labels, ['Living room']); assert.throws(() => products([p,p])); for (const quantity of [0,1.5,'3',10001]) assert.throws(() => products([{ ...p, quantity }])); assert.throws(() => products([{ ...p, unitListPrice: 1 }])); });
+test('image signatures reject arbitrary or SVG uploads', () => { assert.equal(imageType(Buffer.from([255,216,255,0])), 'image/jpeg'); assert.equal(imageType(Buffer.from([137,80,78,71,13,10,26,10])), 'image/png'); assert.equal(imageType(Buffer.from('RIFF0000WEBP')), 'image/webp'); assert.throws(() => imageType(Buffer.from('<svg/>'))); assert.throws(() => imageType(Buffer.alloc(0))); });
