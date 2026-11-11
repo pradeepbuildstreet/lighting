@@ -39,7 +39,7 @@ async function createOfferPdf(offer,res,mediaFile){
  doc.moveDown();
  const room=h=>{if(doc.y+h>doc.page.height-55){doc.addPage();doc.x=42;}};
  const context=offer.interior_pricing_snapshot?.context;
- if(context){room(60);doc.font('Helvetica').fontSize(10).text([context.project_name,context.layout_name,context.design_name].filter(Boolean).join(' / '),42,doc.y,{width:511});doc.text('Line totals include product discounts. Package and consolidated discounts appear in the summary.',42,doc.y,{width:511});doc.moveDown();}
+ if(context){room(90);doc.font('Helvetica').fontSize(10).text([context.project_name,context.layout_name,context.design_name].filter(Boolean).join(' / '),42,doc.y,{width:511});if(context.group_name){room(30);doc.text((context.group_label||'Group')+': '+context.group_name,42,doc.y,{width:511});}doc.text('Line totals include product discounts. Package and consolidated discounts appear in the summary.',42,doc.y,{width:511});doc.moveDown();}
  room(60);doc.font('Helvetica-Bold').fontSize(12).fillColor('#18382e').text('Available products included in this quotation',42,doc.y,{width:511});doc.moveDown(.5);
  function header(){const y=doc.y;doc.font('Helvetica-Bold').fontSize(9).fillColor('#18382e');for(const [t,x,w] of [['Product',98,105],['Qty',211,28],['List price',246,75],['Discount',328,55],['Offer price',390,74],['Line total',471,82]])doc.text(t,x,y,{width:w,align:x===98?'left':'right'});doc.y=y+25;}
  header();
