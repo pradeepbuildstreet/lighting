@@ -1,2 +1,2 @@
-import {InteriorCustomer} from '@/components/InteriorCustomer';
-export default function InteriorsPage(){return <InteriorCustomer/>;}
+import {InteriorProjectBrowser} from '@/components/InteriorProjectBrowser';
+export default function InteriorsPage(){return <InteriorProjectBrowser/>;}
