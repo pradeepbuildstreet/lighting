@@ -1,0 +1,10 @@
+'use strict';
+const test=require('node:test'),assert=require('node:assert/strict');
+const {build,totals}=require('./interior-quote-pricing');
+const enquiry={version:1,pricing:{ruleVersion:'interior-incremental-v1'},products:[{product_id:'a',price:60000,quantity:1,default_discount_percent:20},{product_id:'b',price:40000,quantity:1,default_discount_percent:0},{product_id:'c',price:20000,quantity:1,default_discount_percent:40}]};
+const items=()=>enquiry.products.map(p=>({...p,list_price:p.price,offer_price:p.price*(1-p.default_discount_percent/100)}));
+test('quote keeps product package and consolidated discounts separate',()=>{const saved=build(enquiry,items(),{type:'amount',value:2500});assert.equal(saved.pricing.subtotalPaise,10000000);assert.equal(saved.pricing.packageDiscountPaise,750000);assert.equal(saved.pricing.consolidatedDiscountPaise,250000);assert.equal(totals(saved).offer_total,90000);});
+test('percent applies after package reduction',()=>{assert.equal(build(enquiry,items(),{type:'percent',value:10}).pricing.finalTotalPaise,8325000);});
+test('available products determine eligibility and slabs',()=>{assert.equal(build(enquiry,items().slice(0,2)).pricing.packageDiscountPaise,0);const revised=items();revised[0].offer_price=0;assert.equal(build(enquiry,revised).pricing.packageDiscountPaise,290000);});
+test('reject invented products, discounts below floor and excessive consolidated amounts',()=>{assert.throws(()=>build(enquiry,[...items(),{...items()[0],product_id:'x'}]));const bad=items();bad[0].offer_price=60000;assert.throws(()=>build(enquiry,bad));assert.throws(()=>build(enquiry,items(),{type:'amount',value:92501}));assert.throws(()=>build(enquiry,items(),{type:'percent',value:101}));});
+test('ordinary enquiries unchanged',()=>{assert.equal(build(null,items()),null);assert.throws(()=>build(null,items(),{type:'amount',value:1}));assert.equal(totals(null),null);});

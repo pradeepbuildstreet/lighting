@@ -1,0 +1,21 @@
+'use strict';
+const {packageDiscountPaise,RULE_VERSION}=require('./interior-package-pricing');
+const {money}=require('./wishlist-catalogue');
+const {percent}=require('./product-discount-core');
+function fail(message){throw Object.assign(Error(message),{status:400});}
+function paise(value){const result=Math.round(money(value)*100);if(!Number.isSafeInteger(result))fail('Amount exceeds supported range');return result;}
+function safe(value){if(!Number.isSafeInteger(value)||value<0)fail('Invalid quotation amount');return value;}
+function build(enquiry,items,consolidated={type:'amount',value:0}){
+ if(!enquiry){if(consolidated&&Number(consolidated.value)!==0)fail('Consolidated interior discount requires an interior-package enquiry');return null;}
+ if(enquiry.version!==1||enquiry.pricing?.ruleVersion!==RULE_VERSION||!Array.isArray(enquiry.products))fail('Unsupported interior enquiry pricing version');
+ if(!Array.isArray(items)||!items.length)fail('Available products required');
+ const seen=new Set();let list=0,subtotal=0;
+ const lines=items.map(item=>{const original=enquiry.products.find(p=>p.product_id===item.product_id);if(!original||seen.has(item.product_id))fail('Quoted products must belong to the captured interior enquiry');seen.add(item.product_id);if(!Number.isSafeInteger(item.quantity)||item.quantity<1||item.quantity>original.quantity)fail('Invalid quoted quantity');const unitList=paise(item.list_price??item.price),unitNet=paise(item.offer_price);if(unitList!==paise(original.price)||String(Number(item.default_discount_percent))!==String(Number(original.default_discount_percent)))fail('Captured product price or discount changed');const ceiling=paise((Math.round(Number(original.price)*(100-Number(original.default_discount_percent)))/100).toFixed(2));if(unitNet>ceiling)fail('Quoted price exceeds captured product-discount price');list=safe(list+safe(unitList*item.quantity));subtotal=safe(subtotal+safe(unitNet*item.quantity));return {productId:item.product_id,quantity:item.quantity,unitListPaise:unitList,unitNetPaise:unitNet,lineListPaise:unitList*item.quantity,lineNetPaise:unitNet*item.quantity};});
+ const slab=packageDiscountPaise(subtotal,seen.size),net=subtotal-slab;
+ if(!consolidated||typeof consolidated!=='object'||Array.isArray(consolidated)||Object.keys(consolidated).some(k=>!['type','value'].includes(k))||!['amount','percent'].includes(consolidated.type))fail('Invalid consolidated discount');
+ const value=consolidated.type==='percent'?String(percent(consolidated.value)):String(money(consolidated.value));const reduction=consolidated.type==='percent'?Math.round(net*Number(value)/100):paise(value);if(reduction>net)fail('Consolidated discount exceeds package value');
+ return {version:1,context:{project_id:enquiry.project_id,project_name:enquiry.project_name,layout_id:enquiry.layout_id,layout_name:enquiry.layout_name,design_id:enquiry.design_id,design_name:enquiry.design_name},pricing:{ruleVersion:RULE_VERSION,currency:'INR',moneyUnit:'paise',lines,distinctProductCount:seen.size,listTotalPaise:list,productDiscountPaise:list-subtotal,subtotalPaise:subtotal,packageDiscountPaise:slab,netPackagePaise:net,consolidatedDiscount:{type:consolidated.type,value},consolidatedDiscountPaise:reduction,finalTotalPaise:net-reduction}};
+}
+function totals(snapshot){if(!snapshot)return null;const p=snapshot.pricing;if(snapshot.version!==1||p?.ruleVersion!==RULE_VERSION||p.moneyUnit!=='paise')throw Error('Unsupported saved quotation snapshot');const list=safe(p.listTotalPaise),final=safe(p.finalTotalPaise);if(final>list)throw Error('Invalid saved quotation total');return {list_total:list/100,offer_total:final/100,savings:(list-final)/100,discount_percent:list?Math.round((list-final)/list*10000)/100:0};}
+function rows(snapshot){if(!snapshot)return null;const p=snapshot.pricing;totals(snapshot);return [['Subtotal at list prices',p.listTotalPaise/100],['Product discounts',-p.productDiscountPaise/100],['Subtotal after product discounts',p.subtotalPaise/100],['Additional package discount',-p.packageDiscountPaise/100],['Net package value',p.netPackagePaise/100],['Additional consolidated discount',-p.consolidatedDiscountPaise/100],['Offer total',p.finalTotalPaise/100]];}
+module.exports={build,totals,rows};
