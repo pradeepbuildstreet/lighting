@@ -12,7 +12,7 @@ async function loadImage(url,doc,mediaFile){
   const configured=(process.env.IMAGE_REPO_URL||'').trim();if(!configured)return null;
   const source=new URL(url,configured),allowed=new Set([configured,...(process.env.FRONTEND_ORIGIN||'').split(',')].filter(Boolean).map(v=>{try{return new URL(v.trim()).origin;}catch(_){return '';}}));
   if(!['https:','http:'].includes(source.protocol)||source.username||source.password||!allowed.has(source.origin))return null;
-  const publicPath=decodeURIComponent(source.pathname).replace(/^\/+/,'');const root=path.resolve(process.env.IMAGE_PUBLIC_ROOT||path.join(__dirname,'../../frontend/public'));
+  const publicPath=decodeURIComponent(source.pathname).replace(/^\/+/,''),root=path.resolve(process.env.IMAGE_PUBLIC_ROOT||path.join(__dirname,'../../frontend/public'));
   if(!publicPath||publicPath.includes('\0'))return null;
   const candidates=[path.resolve(root,publicPath)];if(publicPath.startsWith('uploads/'))candidates.push(path.resolve(root,'uploads',path.basename(publicPath)));
   for(const candidate of candidates){try{const realRoot=await fs.realpath(root),real=await fs.realpath(candidate);if(!real.startsWith(realRoot+path.sep))continue;const stat=await fs.stat(real);if(!stat.isFile()||stat.size>4000000)continue;const b=await fs.readFile(real);doc.openImage(b);return b;}catch(_){}}
@@ -38,7 +38,9 @@ async function createOfferPdf(offer,res,mediaFile){
  if(offer.is_partial)doc.text('PARTIAL AVAILABILITY: totals cover available quantities only. See the not-available table after the terms.');
  doc.moveDown();
  const room=h=>{if(doc.y+h>doc.page.height-55){doc.addPage();doc.x=42;}};
- doc.font('Helvetica-Bold').fontSize(12).fillColor('#18382e').text('Available products included in this quotation',42,doc.y,{width:511});doc.moveDown(.5);
+ const context=offer.interior_pricing_snapshot?.context;
+ if(context){room(60);doc.font('Helvetica').fontSize(10).text([context.project_name,context.layout_name,context.design_name].filter(Boolean).join(' / '),42,doc.y,{width:511});doc.text('Line totals include product discounts. Package and consolidated discounts appear in the summary.',42,doc.y,{width:511});doc.moveDown();}
+ room(60);doc.font('Helvetica-Bold').fontSize(12).fillColor('#18382e').text('Available products included in this quotation',42,doc.y,{width:511});doc.moveDown(.5);
  function header(){const y=doc.y;doc.font('Helvetica-Bold').fontSize(9).fillColor('#18382e');for(const [t,x,w] of [['Product',98,105],['Qty',211,28],['List price',246,75],['Discount',328,55],['Offer price',390,74],['Line total',471,82]])doc.text(t,x,y,{width:w,align:x===98?'left':'right'});doc.y=y+25;}
  header();
  for(const item of offer.items){
@@ -53,8 +55,9 @@ async function createOfferPdf(offer,res,mediaFile){
   doc.y=y+height;doc.moveTo(42,doc.y).lineTo(553,doc.y).strokeColor('#e1e6df').stroke();doc.moveDown(.5);
   if(item.availability_note){room(35);doc.font('Helvetica').fontSize(9).text('Availability remark: '+item.availability_note,42,doc.y,{width:511});doc.moveDown(.5);}
  }
- room(90);doc.x=42;doc.fontSize(10);
- for(const [label,value] of [['Subtotal at list prices',money(offer.list_total)],['Discount offered ('+offer.discount_percent+'%)','- '+money(offer.savings)],['Offer total',money(offer.offer_total)]]){const y=doc.y;doc.font(label==='Offer total'?'Helvetica-Bold':'Helvetica').text(label,42,y,{width:350});doc.text(value,392,y,{width:161,align:'right'});doc.y=y+18;}
+ const summary=Array.isArray(offer.pricing_rows)&&offer.pricing_rows.length?offer.pricing_rows:[['Subtotal at list prices',offer.list_total],['Discount offered ('+offer.discount_percent+'%)',-offer.savings],['Offer total',offer.offer_total]];
+ room(summary.length*20+30);doc.x=42;doc.fontSize(10);
+ for(const [label,value] of summary){room(24);const y=doc.y;doc.font(label==='Offer total'?'Helvetica-Bold':'Helvetica').text(label,42,y,{width:340});doc.text(money(value),392,y,{width:161,align:'right'});doc.y=y+20;}
  doc.moveDown();
  const terms=offer.terms||{},termsList=[['GST / tax',terms.gst],['Payment terms',terms.payment_terms],['Account / payment details',terms.payment_details],['Estimated delivery',terms.delivery_days?terms.delivery_days+' days':''],['Additional terms',terms.other_terms]].filter(([,v])=>v);
  if(termsList.length){room(50);doc.font('Helvetica-Bold').fontSize(12).text('Terms and conditions',42,doc.y,{width:511});for(const [label,value] of termsList){room(45);doc.font('Helvetica-Bold').fontSize(9).text(label+':',42,doc.y,{width:511});doc.font('Helvetica').text(String(value),42,doc.y,{width:511});doc.moveDown(.3);}}
