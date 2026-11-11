@@ -1,4 +1,2 @@
-'use client';
-import {useParams} from 'next/navigation';
 import {InteriorCustomer} from '@/components/InteriorCustomer';
-export default function InteriorDesignPage(){const params=useParams();const id=typeof params?.id==='string'?params.id:undefined;return id?<InteriorCustomer designId={id}/>:<p>Invalid interior design.</p>;}
+export default function InteriorDesignPage({params,searchParams}:{params:{id:string};searchParams:{group_id?:string|string[]}}){const group=typeof searchParams.group_id==='string'?searchParams.group_id:'';return <InteriorCustomer key={params.id+':'+group} designId={params.id}/>;}
