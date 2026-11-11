@@ -164,6 +164,7 @@ app.use(
 
 require("./api/homepage-collections").mount(app);
 require("./api/interior-admin").mount(app);
+require("./api/interior-project-groups").mount(app);
 require("./api/interior-public").mount(app);
 require("./api/interior-enquiries").mount(app);
 require("./services/public-enquiry-counts").mount(app);
